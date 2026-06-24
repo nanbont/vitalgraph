@@ -65,3 +65,15 @@ def device_sharing_pairs(driver) -> list[dict]:
     with driver.session() as session:
         result = session.run(DEVICE_CORRELATION_QUERY)
         return [dict(record) for record in result]
+
+
+DOCTOR_BY_ID_QUERY = "MATCH (d:Doctor {id: $doctorId}) RETURN d.name AS name"
+
+
+def doctor_name_by_id(driver, doctor_id: str | None) -> str | None:
+    if doctor_id is None:
+        return None
+    with driver.session() as session:
+        result = session.run(DOCTOR_BY_ID_QUERY, doctorId=doctor_id)
+        record = result.single()
+        return record["name"] if record else None

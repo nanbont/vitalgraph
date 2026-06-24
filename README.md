@@ -9,9 +9,11 @@ design rationale, schemas, and query patterns.
 ## Status
 
 Infrastructure (Mosquitto, MySQL, MongoDB, Neo4j) is up and seeded.
-Publisher (wearable simulator) and Router (MQTT subscriber + anomaly
-detection + Neo4j escalation) are implemented and tested. FastAPI and the
-dashboard are the next build phase.
+Publisher, Router, and the FastAPI backend are implemented and verified
+against real running data. The dashboard is built with **Streamlit**
+(connects directly to the databases, no separate frontend build step) —
+this matches the approach used by the reference project for this same
+assignment, and avoids Node/npm version issues entirely.
 
 ## Running the publisher and router
 
@@ -30,6 +32,26 @@ python publisher/publisher.py
 The router logs every message it processes; when an anomalous reading
 fires, you'll see an `ALERT` line showing which doctor was resolved via
 the Neo4j escalation query (see `SPEC.md` section 7).
+
+## Running the dashboard
+
+```bash
+source .venv/bin/activate
+streamlit run dashboard_app.py
+```
+
+This opens automatically in your browser (typically `http://localhost:8501`).
+No separate API server is required — the dashboard connects directly to
+MySQL, MongoDB, and Neo4j using the same client modules the router uses.
+
+## (Optional) Running the FastAPI backend
+
+A REST/WebSocket API also exists (`api/main.py`) if you want programmatic
+access to the same data independent of the dashboard:
+
+```bash
+uvicorn api.main:app --reload --port 8000
+```
 
 ## Prerequisites
 

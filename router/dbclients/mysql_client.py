@@ -74,3 +74,23 @@ def fetch_recent_heartrate(conn, patient_id: str, limit: int = 100):
     rows = cur.fetchall()
     cur.close()
     return rows
+
+
+def fetch_recent_spo2(conn, patient_id: str, limit: int = 100):
+    cur = conn.cursor(dictionary=True)
+    cur.execute(
+        "SELECT spo2_pct, recorded_at FROM vitals_spo2 "
+        "WHERE patient_id = %s ORDER BY recorded_at DESC LIMIT %s",
+        (patient_id, limit),
+    )
+    rows = cur.fetchall()
+    cur.close()
+    return rows
+
+
+def fetch_all_patients(conn):
+    cur = conn.cursor(dictionary=True)
+    cur.execute("SELECT patient_id, name, date_of_birth FROM patients")
+    rows = cur.fetchall()
+    cur.close()
+    return rows

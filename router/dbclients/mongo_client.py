@@ -72,3 +72,13 @@ def recent_alerts(db, patient_id: str | None = None, limit: int = 50):
     return list(
         db.alerts.find(query).sort("detected_at", -1).limit(limit)
     )
+
+
+def all_device_metadata(db):
+    """
+    Returns every device_metadata document as-is. Used by the dashboard to
+    visibly demonstrate why this lives in MongoDB: different device models
+    have genuinely different fields (see SPEC.md section 6) — e.g. the
+    chest strap has no 'spo2'/'steps' capability, no GPS field, etc.
+    """
+    return list(db.device_metadata.find())

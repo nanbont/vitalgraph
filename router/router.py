@@ -31,7 +31,7 @@ from shared_constants import PATIENTS
 
 sys.path.append(str(Path(__file__).resolve().parent))
 from anomaly import check_heartrate, check_spo2
-from db import mongo_client, mysql_client, neo4j_client
+from dbclients import mongo_client, mysql_client, neo4j_client
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [router] %(message)s")
 log = logging.getLogger(__name__)
