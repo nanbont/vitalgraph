@@ -1,0 +1,71 @@
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: vitalgraph-mosquitto
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mosquitto/config:/mosquitto/config
+      - mosquitto-data:/mosquitto/data
+      - mosquitto-log:/mosquitto/log
+    restart: unless-stopped
+
+  mysql:
+    image: mysql:8.4
+    container_name: vitalgraph-mysql
+    environment:
+      MYSQL_USER: ${MYSQL_USER:-vitaluser}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-vitalpass}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpass}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-vitalgraph}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./db/mysql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -p${MYSQL_ROOT_PASSWORD:-rootpass}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  mongo:
+    image: mongo:7
+    container_name: vitalgraph-mongo
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-vitaluser}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-vitalpass}
+      MONGO_INITDB_DATABASE: ${MONGO_DB:-vitalgraph}
+    ports:
+      - "27018:27017"
+    volumes:
+      - mongo-data:/data/db
+      - ./db/mongo/seed.js:/docker-entrypoint-initdb.d/seed.js:ro
+    restart: unless-stopped
+
+  neo4j:
+    image: neo4j:5
+    container_name: vitalgraph-neo4j
+    environment:
+      NEO4J_AUTH: ${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-vitalpass123}
+      NEO4J_PLUGINS: '["apoc"]'
+    ports:
+      - "7474:7474"  # browser UI
+      - "7687:7687"  # bolt protocol
+    volumes:
+      - neo4j-data:/data
+      - ./db/neo4j/seed.cypher:/seed/seed.cypher:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:7474 || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  mosquitto-data:
+  mosquitto-log:
+  mysql-data:
+  mongo-data:
+  neo4j-data:
