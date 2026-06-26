@@ -1,124 +1,112 @@
 # VitalGraph
 
-Polyglot health-monitoring platform: simulated wearables stream vitals over
-MQTT, a Python router persists them across MySQL, MongoDB, and Neo4j —
-each chosen because it genuinely fits a different part of the data, not as
-a forced tour of three databases. See [`SPEC.md`](./SPEC.md) for the full
-design rationale, schemas, and query patterns.
+Polyglot health-monitoring platform for the DB-B8 (Health & Wellness) track.
+
+Simulated wearables stream vitals over MQTT. A Python router picks up each
+message and writes it into MySQL, MongoDB, or Neo4j depending on what kind
+of data it is. When a reading crosses an anomaly threshold, the router
+queries Neo4j to figure out who to notify (walking a backup chain if the
+patient's primary doctor is off duty) and logs the alert in MongoDB.
+
+Full design rationale, schemas, and the actual Cypher queries are in
+[`SPEC.md`](./SPEC.md).
 
 ## Status
 
-Infrastructure (Mosquitto, MySQL, MongoDB, Neo4j) is up and seeded.
-Publisher, Router, and the FastAPI backend are implemented and verified
-against real running data. The dashboard is built with **Streamlit**
-(connects directly to the databases, no separate frontend build step) —
-this matches the approach used by the reference project for this same
-assignment, and avoids Node/npm version issues entirely.
-
-## Running the publisher and router
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-
-# Terminal 1
-python router/router.py
-
-# Terminal 2
-python publisher/publisher.py
-```
-
-The router logs every message it processes; when an anomalous reading
-fires, you'll see an `ALERT` line showing which doctor was resolved via
-the Neo4j escalation query (see `SPEC.md` section 7).
-
-## Running the dashboard
-
-```bash
-source .venv/bin/activate
-streamlit run dashboard_app.py
-```
-
-This opens automatically in your browser (typically `http://localhost:8501`).
-No separate API server is required — the dashboard connects directly to
-MySQL, MongoDB, and Neo4j using the same client modules the router uses.
-
-## (Optional) Running the FastAPI backend
-
-A REST/WebSocket API also exists (`api/main.py`) if you want programmatic
-access to the same data independent of the dashboard:
-
-```bash
-uvicorn api.main:app --reload --port 8000
-```
-
-## Prerequisites
-
-- Docker + Docker Compose
-- (Later, for app code) Python 3.11+
+Everything below works and has been tested against real running data:
+Docker stack, publisher, router (with live escalation), FastAPI backend,
+Streamlit dashboard.
 
 ## Getting started
 
 ```bash
 cp .env.example .env
-
 docker compose up -d
+```
 
-# MySQL and Mongo seed automatically on first start.
-# Neo4j needs its seed loaded manually (see note below):
+MySQL and Mongo seed themselves on first start. Neo4j doesn't support
+auto-running `.cypher` files, so run this once after the containers are up:
+
+```bash
 ./db/neo4j/load_seed.sh
 ```
 
-### Why Neo4j needs a manual step
+Don't run it twice without wiping the volume first — Cypher's `CREATE`
+doesn't dedupe, so re-running the seed just creates duplicate nodes and
+relationships on top of the old ones. (Learned this one the hard way.)
 
-MySQL and Mongo's official images auto-run init scripts mounted into
-their entrypoint directories. Neo4j's image doesn't support this for
-`.cypher` files, so `load_seed.sh` waits for the container to be healthy
-and runs the seed via `cypher-shell` directly.
+## Running it
 
-## Verifying the environment
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+Then, two terminals:
+
+```bash
+# terminal 1
+python router/router.py
+
+# terminal 2
+python publisher/publisher.py
+```
+
+The router logs an `ALERT` line whenever something fires, including which
+doctor got notified. Then:
+
+```bash
+streamlit run dashboard_app.py
+```
+
+Opens at `http://localhost:8501`. Connects straight to MySQL/Mongo/Neo4j,
+no separate API needed for the dashboard itself.
+
+There's also a FastAPI backend (`api/main.py`) if you want REST/WebSocket
+access independent of the dashboard:
+
+```bash
+uvicorn api.main:app --reload --port 8000
+```
+
+## Checking it's actually working
 
 ```bash
 docker ps
-# expect: vitalgraph-mosquitto, vitalgraph-mysql, vitalgraph-mongo, vitalgraph-neo4j
+# vitalgraph-mosquitto, vitalgraph-mysql, vitalgraph-mongo, vitalgraph-neo4j
 
-# MySQL
-docker exec -it vitalgraph-mysql mysql -u vitaluser -pvitalpass vitalgraph -e "SELECT * FROM patients;"
+docker exec -it vitalgraph-mysql mysql -u vitaluser -pvitalpass vitalgraph \
+  -e "SELECT * FROM patients;"
 
-# Mongo
-docker exec -it vitalgraph-mongo mongosh -u vitaluser -p vitalpass --authenticationDatabase admin vitalgraph --eval "db.device_metadata.find()"
+docker exec -it vitalgraph-mongo mongosh -u vitaluser -p vitalpass \
+  --authenticationDatabase admin vitalgraph --eval "db.device_metadata.find()"
 
-# Neo4j browser UI
-# open http://localhost:7474  (user: neo4j / password: vitalpass123)
+# Neo4j browser: http://localhost:7474  (neo4j / vitalpass123)
 ```
 
-## Service ports
+## Ports
 
 | Service | Port | Notes |
 |---|---|---|
-| Mosquitto (MQTT) | 1883 | anonymous access allowed — local dev only, see note in `mosquitto/config/mosquitto.conf` |
+| Mosquitto | 1883 | anonymous access, local dev only |
 | MySQL | 3306 | |
-| MongoDB | 27018 | remapped from default 27017 — a native mongod is already using that port on this machine |
-| Neo4j Browser | 7474 | http://localhost:7474 |
-| Neo4j Bolt | 7687 | used by the Python driver |
+| MongoDB | 27018 | remapped — native mongod was already on 27017 on my machine |
+| Neo4j browser | 7474 | http://localhost:7474 |
+| Neo4j bolt | 7687 | |
 
-## Repo structure
+## Layout
 
 ```
 vitalgraph/
-├── publisher/
-│   └── publisher.py        # wearable simulator, publishes to MQTT
+├── publisher/publisher.py     simulated wearables, publishes to MQTT
 ├── router/
-│   ├── router.py            # subscriber + dispatch + anomaly detection
-│   ├── anomaly.py            # threshold checks
-│   └── db/
-│       ├── mysql_client.py
-│       ├── mongo_client.py
-│       └── neo4j_client.py
-├── shared_constants.py      # patient/device IDs + MQTT topics, shared by publisher & router
-├── api/                       # (next) FastAPI app
-├── dashboard/                 # (next) frontend
+│   ├── router.py               subscribe + dispatch + anomaly detection
+│   ├── anomaly.py               threshold checks
+│   └── dbclients/               MySQL/Mongo/Neo4j client wrappers
+├── api/main.py                 FastAPI backend
+├── dashboard_app.py             Streamlit dashboard
+├── shared_constants.py         patient/device IDs, MQTT topics
 ├── db/
 │   ├── mysql/init.sql
 │   ├── mongo/seed.js
@@ -127,6 +115,10 @@ vitalgraph/
 ├── docker-compose.yml
 ├── requirements.txt
 ├── .env.example
-├── SPEC.md
-└── README.md
+└── SPEC.md
 ```
+
+## Requirements
+
+- Docker + Docker Compose
+- Python 3.11+
