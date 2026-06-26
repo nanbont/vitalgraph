@@ -1,6 +1,6 @@
 # VitalGraph
 
-Polyglot health-monitoring platform for the DB-B8 (Health & Wellness) track.
+Health-monitoring platform for the DB-B8 (Health & Wellness) track.
 
 Simulated wearables stream vitals over MQTT. A Python router picks up each
 message and writes it into MySQL, MongoDB, or Neo4j depending on what kind
@@ -16,6 +16,27 @@ Full design rationale, schemas, and the actual Cypher queries are in
 Everything below works and has been tested against real running data:
 Docker stack, publisher, router (with live escalation), FastAPI backend,
 Streamlit dashboard.
+
+## What it looks like
+
+When a patient's reading crosses a threshold, the router queries Neo4j and
+the dashboard shows exactly who got notified and why:
+
+![Care network escalation](screenshots/escalation-banner.png)
+
+The same alert feed across every patient, with each one routed to a
+different doctor depending on who's on duty:
+
+![Alert feed](screenshots/alert-feed.png)
+
+Heart rate and SpO2 charts, MySQL data with a 10-minute rolling average:
+
+![Heart rate chart](screenshots/heartrate-chart.png)
+
+MongoDB device metadata and a Neo4j graph query for device-correlation,
+side by side:
+
+![System-wide data](screenshots/system-wide-data.png)
 
 ## Getting started
 
