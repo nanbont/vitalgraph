@@ -1,23 +1,23 @@
 # VitalGraph — Polyglot Health Monitoring & Care-Network Platform
 
-**Course:** Database Module B
-**Track:** DB-B8 — Health & Wellness
-**Stack:** Python, MySQL, MongoDB, Neo4j, MQTT (Mosquitto), FastAPI
+**Course:** Database Module B  **Track:** DB-B8 — Health & Wellness
+**Stack:** Python, MySQL, MongoDB, Neo4j, MQTT (Mosquitto), FastAPI, Streamlit
 
 ---
 
 ## 1. Concept
 
-VitalGraph simulates wearable health devices streaming vitals over MQTT. A
-Python ingestion service routes each message to the database that genuinely
-fits its data shape — not as a forced exercise in touching three databases,
-but because each one solves a problem the others handle poorly.
+Simulated wearable devices stream vitals over MQTT. A Python router picks
+up each message and writes it to whichever database actually fits that
+kind of data — MySQL for the regular numeric readings, MongoDB for the
+stuff that doesn't have a fixed shape, Neo4j for the care-network
+relationships.
 
-The differentiating idea: **Neo4j is not a data store for events — it's a
-real-time decision engine.** When an anomaly is detected, the system queries
-the care-network graph to decide *who should be notified*, traversing
-escalation chains that are awkward in SQL and natural in Cypher. The graph
-holds relationships, not records.
+The part I actually care about getting right: Neo4j isn't just storing
+data, it's used to decide things. When a reading crosses a threshold, the
+router queries the graph to figure out who should get notified — walking
+a backup-coverage chain if the patient's usual doctor is off duty. The
+graph holds relationships; it doesn't log events.
 
 ---
 
@@ -27,7 +27,7 @@ holds relationships, not records.
 [Simulated Wearables] --(MQTT)--> [Mosquitto Broker]
                                         |
                                         v
-                          [Python Ingestion/Router Service]
+                          [Python Router]
                            /                              \
                           v                                v
                    MySQL                              MongoDB
@@ -36,55 +36,49 @@ holds relationships, not records.
                           \                                /
                            \                              /
                             v                            v
-                         [Anomaly Detector] --query--> Neo4j
-                                                  (care network: who to notify)
+                         [Anomaly check] --query--> Neo4j
+                                                  (who to notify)
                                         |
                                         v
                           [FastAPI backend] <-- queries all 3 DBs
                                         |
                                         v
-                 [Dashboard: live vitals chart + alert feed + escalation view]
+                       [Streamlit dashboard: charts + alert feed]
 ```
 
 ---
 
-## 3. Why each database — the honest version
+## 3. Why each database
 
-| Data | Database | Why it's natural, not forced |
+| Data | Database | Reasoning |
 |---|---|---|
-| Heart rate, SpO2, steps, sleep (regular numeric time-series) | **MySQL** | Fixed schema, high-frequency, needs fast range/aggregate queries (rolling averages, daily trends). This is the standard OLTP case for sensor data. |
-| Free-text symptom logs, device capability/firmware metadata | **MongoDB** | No two device models share a schema (different sensors, firmware structures, capability sets); patient self-reports are free-form and optional-field-heavy. Forcing either into fixed SQL columns means constant migrations or sparse nullable columns. |
-| Care escalation chains, cross-patient device/alert correlation | **Neo4j** | The actual questions asked — "who's next in the escalation chain," "which patients cluster around a failing device model" — are path-traversal questions of variable depth. Awkward as recursive SQL CTEs, natural as Cypher. The graph is queried *at decision time*, not used as a passive event log. |
+| Heart rate, SpO2, steps, sleep | **MySQL** | Fixed schema, high write frequency, needs fast range/aggregate queries. Standard OLTP case. |
+| Symptom logs, device metadata | **MongoDB** | Different device models genuinely have different fields (sensors, firmware, capabilities). Patient self-reports are free-form with optional fields. Either of these as fixed SQL columns means constant migrations. |
+| Care escalation chains, device-correlation | **Neo4j** | "Who's next in the escalation chain" and "which patients share a device model" are variable-depth path questions — painful as recursive SQL, natural in Cypher. Queried at decision time, not stored as a log. |
 
-**Explicitly avoided as decorative:** storing every alert as a Neo4j node.
-An alert is an event record — it belongs in MongoDB. The graph is consulted
-*when* an alert fires, to traverse existing relationships and decide
-routing. This keeps the graph's role honest: relationships, not records.
+No `Alert` nodes in Neo4j — an alert is an event with a timestamp, that's
+MongoDB's job. The graph only gets touched when the care network itself
+changes (a doctor's shift status, a new backup assignment).
 
-### Why MySQL specifically (not PostgreSQL or SQLite)
+### Why MySQL and not Postgres or SQLite
 
-- The reference DB-B8 repo used SQLite, which lacks a real client-server
-  story (no concurrent writes, no network access) — too thin for a
-  "production-minded" narrative.
-- We considered PostgreSQL first, for its native `TIMESTAMPTZ` and
-  time-based window functions (`RANGE BETWEEN INTERVAL`). We switched to
-  **MySQL** to match the ecosystem the course's reference projects already
-  use (the environmental-monitoring reference repo uses MySQL), reducing
-  friction during review/defense.
-- **Trade-off, made explicit rather than hidden:** MySQL 8's window
-  functions support `ROWS BETWEEN` (row-count windows) but not Postgres-style
-  time-based `RANGE BETWEEN INTERVAL`. Rolling averages over a *time* window
-  (e.g. "last 10 minutes") are therefore computed in the **Python API layer**
-  instead of pure SQL — see Section 5's note and the API service. This is a
-  legitimate engineering choice (portability, easier to unit test) and is
-  called out directly in the report rather than glossed over.
-- Timestamps are stored as `DATETIME` in UTC; the application layer is
-  responsible for timezone conversion, since MySQL's timezone handling is
-  less explicit than Postgres's `TIMESTAMPTZ`.
+Started with Postgres, mainly for `TIMESTAMPTZ` and time-based window
+functions (`RANGE BETWEEN INTERVAL`) — would've made rolling averages a
+one-liner. Switched to MySQL partway through, since the other DB-B8
+submission I looked at for reference used SQLite (no real concurrent
+writes, felt too thin), and a different reference project used MySQL
+successfully for a similar pipeline.
+
+Cost of the switch: MySQL 8 supports `ROWS BETWEEN` but not time-based
+`RANGE BETWEEN INTERVAL`. A row-count window isn't the same thing as a
+time window if readings arrive at irregular intervals, so the rolling
+average got moved out of SQL and into Python (see Section 5). Timestamps
+are stored as UTC `DATETIME`; timezone conversion is the application's
+problem, not the database's.
 
 ---
 
-## 4. MQTT topic design
+## 4. MQTT topics
 
 ```
 vitalgraph/{patient_id}/vitals/heartrate
@@ -95,14 +89,12 @@ vitalgraph/{patient_id}/symptoms/report
 vitalgraph/{patient_id}/device/status
 ```
 
-The router subscribes to `vitalgraph/+/+/#`. Dispatch is driven by topic
-segments (which database/table a message goes to), not by inspecting
-payload content — this keeps routing logic explicit and inspectable.
+Router subscribes to `vitalgraph/+/+/#`. Routing is based on the topic
+segments, not on inspecting the payload.
 
-Note: there is no `events/fall` or `events/anomaly` topic published by
-devices. Anomalies are *derived* by the router after vitals are written,
-not reported by the simulated device itself — this is more realistic
-(devices report raw readings; the backend decides what's abnormal).
+No `events/anomaly` topic — devices report raw readings, the router
+decides what counts as abnormal after the fact. That's closer to how a
+real device would actually behave.
 
 ---
 
@@ -158,23 +150,15 @@ CREATE TABLE vitals_activity (
 );
 ```
 
-**Rolling average — computed in Python, not SQL.** MySQL 8's window
-functions support `ROWS BETWEEN` (row-count windows) but not Postgres-style
-time-based `RANGE BETWEEN INTERVAL`. Rather than approximate with a
-row-count window (which breaks if readings arrive at irregular intervals),
-the API fetches recent raw rows and computes the time-windowed average in
-Python:
+**Rolling average, computed in Python:**
 
 ```python
-# api/services/vitals.py (illustrative)
+# api/services/vitals.py
 from datetime import timedelta
 from statistics import mean
 
 def rolling_avg_bpm(readings: list[dict], window_minutes: int = 10) -> list[dict]:
-    """
-    readings: list of {"recorded_at": datetime, "bpm": int}, sorted ascending.
-    Returns each reading annotated with the average bpm over the preceding window.
-    """
+    """readings: [{"recorded_at": datetime, "bpm": int}, ...], sorted ascending."""
     window = timedelta(minutes=window_minutes)
     result = []
     for i, r in enumerate(readings):
@@ -184,44 +168,41 @@ def rolling_avg_bpm(readings: list[dict], window_minutes: int = 10) -> list[dict
     return result
 ```
 
-This is simple, easy to unit test, and is an explicit, defensible trade-off
-rather than a workaround glossed over in the report.
-
 ---
 
 ## 6. MongoDB collections
 
-```js
-// device_metadata — varies per manufacturer/model, no fixed schema
+```javascript
+// device_metadata — shape varies per manufacturer/model
 {
-  "_id": "device-uuid",
+  "_id": "WXP-6305",
   "model": "WearableX Pro",
   "firmware_version": "2.3.1",
   "battery_pct": 78,
   "last_seen": ISODate(),
-  "capabilities": ["heartrate", "spo2", "gps"]   // shape differs per device
+  "capabilities": ["heartrate", "spo2", "steps", "sleep"]
 }
 
-// symptom_logs — free text, optional fields, inherently irregular
+// symptom_logs — free text, optional fields
 {
   "_id": ObjectId(),
-  "patient_id": "uuid",
+  "patient_id": "...",
   "reported_at": ISODate(),
   "text": "Felt dizzy after climbing stairs, lasted ~10 min",
-  "tags": ["dizziness"],          // optional, patient-entered
-  "severity_self_rated": 3        // optional, not all reports include this
+  "tags": ["dizziness"],
+  "severity_self_rated": 3
 }
 
-// alerts — event records, NOT graph nodes (see section 3)
+// alerts — event records, not graph nodes
 {
   "_id": ObjectId(),
-  "patient_id": "uuid",
-  "device_id": "uuid",
-  "alert_type": "abnormal_heartrate",   // or "low_spo2"
+  "patient_id": "...",
+  "device_id": "...",
+  "alert_type": "abnormal_heartrate",
   "severity": "high",
-  "detail": { "bpm": 162, "threshold": 140 },  // shape varies by alert_type
+  "detail": { "bpm": 162, "threshold": 140, "direction": "high" },
   "detected_at": ISODate(),
-  "notified_doctor_id": "uuid",          // filled in after Neo4j lookup
+  "notified_doctor_id": "...",
   "acknowledged": false
 }
 ```
@@ -239,19 +220,18 @@ rather than a workaround glossed over in the report.
 // Relationships
 (:Patient)-[:MONITORED_BY]->(:Doctor)
 (:Doctor)-[:MEMBER_OF]->(:CareTeam)
-(:Doctor)-[:BACKUP_FOR]->(:Doctor)      // covering doctor if primary off-duty
-(:Patient)-[:OWNS]->(:Device {id, type})  // lightweight, for correlation queries
+(:Doctor)-[:BACKUP_FOR]->(:Doctor)        // covering doctor if primary off-duty
+(:Patient)-[:OWNS]->(:Device {id, type})
 ```
 
-No `Alert` nodes — alerts live in MongoDB. The graph is queried at alert
-time, not written to.
+### Query 1 — escalation routing
 
-### Query 1 — escalation routing (the core "smart" feature)
+This is the one that matters. Run by the router the instant an anomaly
+fires; the result becomes `notified_doctor_id` in the MongoDB alert.
 
 ```cypher
-// Find who to notify: primary doctor if on duty, else walk the backup chain.
-// Semantics: (X)-[:BACKUP_FOR]->(Y) means "X is the backup for Y", so the
-// chain is walked BACKWARDS from the primary doctor to find a covering doctor.
+// (X)-[:BACKUP_FOR]->(Y) means "X is the backup for Y" — so walk the
+// chain BACKWARDS from the primary to find who's covering for them.
 MATCH (p:Patient {id: $patientId})-[:MONITORED_BY]->(primary:Doctor)
 OPTIONAL MATCH path = (available:Doctor {on_duty: true})-[:BACKUP_FOR*0..3]->(primary)
 RETURN coalesce(available, primary) AS notify, length(path) AS chain_depth
@@ -259,8 +239,9 @@ ORDER BY chain_depth
 LIMIT 1;
 ```
 
-This is run by the router the moment an anomaly is detected — the result
-becomes `notified_doctor_id` in the MongoDB alert record.
+First draft of this query had the `BACKUP_FOR` direction backwards —
+caught it by tracing a small example by hand against the seed data before
+testing live (full story in the report).
 
 ### Query 2 — doctor's current patient load
 
@@ -269,46 +250,43 @@ MATCH (doc:Doctor {id: $doctorId})<-[:MONITORED_BY]-(p:Patient)
 RETURN p.name, p.id;
 ```
 
-### Query 3 — device-failure correlation (analytical insight)
+### Query 3 — device-correlation
 
 ```cypher
-// Patients sharing a device model who both triggered alerts within the same hour
-// — a real signal for a potentially faulty device batch
+// patients sharing a device model — signal for a faulty device batch
 MATCH (p1:Patient)-[:OWNS]->(d1:Device)
 MATCH (p2:Patient)-[:OWNS]->(d2:Device)
 WHERE d1.type = d2.type AND p1.id < p2.id
 RETURN p1.name, p2.name, d1.type;
 ```
-(Timestamp correlation against MongoDB alert data happens in the API layer,
-joining this result with `alerts.detected_at` — a genuine example of
-cross-database query composition worth highlighting in the report.)
+
+Result gets joined against `alerts.detected_at` from MongoDB in the API
+layer to check if the pair's alerts actually cluster in time.
 
 ---
 
-## 8. Anomaly detection logic
+## 8. Anomaly detection
 
-Runs in the router immediately after a vitals write to MySQL:
+Runs in the router right after a vitals write:
 
 - Heart rate > 140 or < 40 bpm → `abnormal_heartrate`
 - SpO2 < 92% → `low_spo2`
 
-On trigger:
-1. Run Neo4j escalation query (Section 7, Query 1) → get `notified_doctor_id`
-2. Write alert document to MongoDB `alerts` (Section 6), including the
-   resolved doctor
-3. Push to dashboard via WebSocket
+On trigger: run the Section 7 escalation query → write the alert to
+MongoDB with the resolved doctor already attached → dashboard picks it up.
 
 ---
 
 ## 9. Tech stack
 
-- **Python**: `paho-mqtt`, `mysql-connector-python`/SQLAlchemy, `pymongo`, `neo4j` driver
-- **FastAPI**: REST endpoints + WebSocket for live alert push
-- **MySQL, MongoDB, Neo4j**: Dockerized
-- **Frontend**: lightweight (HTML/JS + Chart.js, or a small React app) —
-  live vitals chart, alert feed, escalation chain view
-- **Mosquitto**: MQTT broker
-- **Docker Compose**: orchestrates everything
+- **Python**: `paho-mqtt`, `mysql-connector-python`, `pymongo`, `neo4j` driver
+- **FastAPI**: REST endpoints, independent of the dashboard
+- **Streamlit**: dashboard, connects directly to all three databases
+- **MySQL, MongoDB, Neo4j, Mosquitto**: Dockerized
+
+(Originally planned a React frontend — abandoned after a few hours
+fighting Node version/port issues on this machine, switched to Streamlit.
+Not a big loss; one less moving part.)
 
 ---
 
@@ -316,31 +294,21 @@ On trigger:
 
 ```
 vitalgraph/
-├── publisher/            # simulator: fake wearables publishing to MQTT
-├── router/                # subscriber + dispatch + anomaly detection
-├── api/                    # FastAPI app
-├── dashboard/              # frontend
+├── publisher/publisher.py
+├── router/
+│   ├── router.py
+│   ├── anomaly.py
+│   └── dbclients/
+├── api/main.py
+├── dashboard_app.py
+├── shared_constants.py
 ├── db/
 │   ├── mysql/init.sql
 │   ├── mongo/seed.js
-│   └── neo4j/seed.cypher
-├── tests/
-├── report/                 # PDF report + screenshots
+│   └── neo4j/seed.cypher, load_seed.sh
+├── mosquitto/config/
 ├── docker-compose.yml
+├── requirements.txt
 ├── .env.example
 └── README.md
 ```
-
----
-
-## 11. One-week plan
-
-| Day | Task |
-|---|---|
-| 1 | Docker Compose up (MySQL, Mongo, Neo4j, Mosquitto); schemas + seed data (patients, doctors, care teams, devices) |
-| 2 | Publisher (simulator) + router skeleton; MQTT → MySQL path working end-to-end |
-| 3 | Anomaly detection + Neo4j escalation query + MongoDB alert writes |
-| 4 | FastAPI endpoints (vitals history, alerts feed, escalation/graph queries) + WebSocket push |
-| 5 | Dashboard: live chart, alert feed, escalation chain view |
-| 6 | Polish, tests, README, architecture diagram, bug fixes from self-demo |
-| 7 | Buffer + PDF report + screenshots |
