@@ -1,15 +1,4 @@
--- VitalGraph: MySQL schema
--- Structured, high-frequency vitals time-series. See SPEC.md section 5 for rationale.
---
--- All timestamps are stored as UTC DATETIME. MySQL's timezone handling is
--- less explicit than Postgres's TIMESTAMPTZ, so the application layer is
--- responsible for converting to/from UTC consistently — there is no
--- column-level timezone awareness here.
---
--- Note on rolling averages: MySQL 8's window functions support
--- ROWS BETWEEN but not Postgres-style RANGE BETWEEN INTERVAL (time-based
--- windows). Rolling averages over a time window are computed in the
--- Python API layer instead of in SQL. See router/ and api/ once written.
+-- VitalGraph MySQL schema. Rolling averages computed in Python (see api/), not SQL.
 
 CREATE TABLE patients (
     patient_id CHAR(36) PRIMARY KEY DEFAULT (UUID()),
@@ -60,15 +49,18 @@ CREATE TABLE vitals_activity (
 );
 CREATE INDEX idx_activity_patient_time ON vitals_activity (patient_id, recorded_at DESC);
 
--- Seed: a handful of demo patients + devices so the dashboard has data on day 1.
--- IDs are fixed (not random) so they match the Mongo and Neo4j seeds exactly.
+-- Seed data: 5 demo patients + devices. IDs match the Mongo/Neo4j seeds.
 
 INSERT INTO patients (patient_id, name, date_of_birth) VALUES
-    ('11111111-1111-1111-1111-111111111111', 'Alice Romano', '1985-03-14'),
-    ('22222222-2222-2222-2222-222222222222', 'Marco Bellini', '1972-11-02'),
-    ('33333333-3333-3333-3333-333333333333', 'Sara Conti', '1990-07-22');
+    ('RMNLCA85C54F158S', 'Alice Romano', '1985-03-14'),
+    ('BLLMRC72S02F158W', 'Marco Bellini', '1972-11-02'),
+    ('CNTSRA90L62F158K', 'Sara Conti', '1990-07-22'),
+    ('BKLBDA88E19F158V', 'Abdi Bekele', '1988-05-19'),
+    ('BRHBNT95P48F158M', 'Abinat Birhanu', '1995-09-08');
 
 INSERT INTO devices (device_id, patient_id, device_type) VALUES
-    ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '11111111-1111-1111-1111-111111111111', 'smartwatch'),
-    ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', '22222222-2222-2222-2222-222222222222', 'chest_strap'),
-    ('cccccccc-cccc-cccc-cccc-cccccccccccc', '33333333-3333-3333-3333-333333333333', 'smartwatch');
+    ('WXP-6305', 'RMNLCA85C54F158S', 'smartwatch'),
+    ('CSE-3471', 'BLLMRC72S02F158W', 'chest_strap'),
+    ('WXL-7468', 'CNTSRA90L62F158K', 'smartwatch'),
+    ('WXP-1791', 'BKLBDA88E19F158V', 'smartwatch'),
+    ('WXL-2186', 'BRHBNT95P48F158M', 'smartwatch');

@@ -7,24 +7,42 @@ These IDs MUST match exactly what's seeded in:
   - db/neo4j/seed.cypher   (Patient, Device nodes)
 
 If you add a new patient/device here, you must add it to all three seeds too.
+
+Patient IDs follow the Italian Codice Fiscale shape (16 chars: surname/given
+name consonant codes + birth year/month/day+sex + birthplace code F158 =
+Messina + checksum letter). Device IDs follow a manufacturer-model-serial
+convention. Doctor IDs follow a hospital staff-code convention
+(MED-<department>-<number>).
 """
 
 PATIENTS = {
-    "11111111-1111-1111-1111-111111111111": {
+    "RMNLCA85C54F158S": {
         "name": "Alice Romano",
-        "device_id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        "device_id": "WXP-6305",
         "device_type": "smartwatch",
         "capabilities": ["heartrate", "spo2", "steps", "sleep"],
     },
-    "22222222-2222-2222-2222-222222222222": {
+    "BLLMRC72S02F158W": {
         "name": "Marco Bellini",
-        "device_id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+        "device_id": "CSE-3471",
         "device_type": "chest_strap",
         "capabilities": ["heartrate"],  # chest straps don't track spo2/steps/sleep
     },
-    "33333333-3333-3333-3333-333333333333": {
+    "CNTSRA90L62F158K": {
         "name": "Sara Conti",
-        "device_id": "cccccccc-cccc-cccc-cccc-cccccccccccc",
+        "device_id": "WXL-7468",
+        "device_type": "smartwatch",
+        "capabilities": ["heartrate", "spo2", "steps"],
+    },
+    "BKLBDA88E19F158V": {
+        "name": "Abdi Bekele",
+        "device_id": "WXP-1791",
+        "device_type": "smartwatch",
+        "capabilities": ["heartrate", "spo2", "steps", "sleep"],
+    },
+    "BRHBNT95P48F158M": {
+        "name": "Abinat Birhanu",
+        "device_id": "WXL-2186",
         "device_type": "smartwatch",
         "capabilities": ["heartrate", "spo2", "steps"],
     },
