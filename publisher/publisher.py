@@ -1,19 +1,4 @@
-"""
-VitalGraph: Publisher (wearable simulator).
-
-Simulates each seeded patient's device publishing vitals over MQTT at a
-realistic cadence (10-30s between readings, varied per-device based on
-capabilities — see SPEC.md section 1 and shared_constants.py).
-
-Occasionally injects an anomalous reading (high/low heart rate, low SpO2)
-so the router's anomaly detection + Neo4j escalation logic has something
-real to react to during a demo, without making every reading look like an
-emergency (that would be unrealistic and also visually boring — alerts
-should feel like genuine events, not constant noise).
-
-Run with:
-    python publisher/publisher.py
-"""
+"""Simulates wearables publishing vitals over MQTT. Run: python publisher/publisher.py"""
 
 import json
 import logging
