@@ -1,20 +1,4 @@
-"""
-VitalGraph: Router (MQTT subscriber + dispatcher + anomaly detection).
-
-Subscribes to vitalgraph/+/+/# and dispatches each message based on its
-topic structure (not by inspecting payload content — see SPEC.md section 4).
-
-Flow per message type:
-  vitals/heartrate -> write to MySQL -> check anomaly -> if anomalous:
-      resolve notified doctor via Neo4j escalation query -> write alert to MongoDB
-  vitals/spo2       -> write to MySQL -> check anomaly -> same as above
-  vitals/steps      -> write to MySQL
-  vitals/sleep       -> write to MySQL
-  device/status      -> update MongoDB device_metadata.last_seen + battery
-
-Run with:
-    python router/router.py
-"""
+"""MQTT subscriber, dispatches messages to MySQL/MongoDB/Neo4j, checks anomalies."""
 
 import json
 import logging
@@ -53,11 +37,7 @@ def handle_anomaly(
     device_id: str,
     anomaly: dict,
 ):
-    """
-    Core 'smart' feature: resolve who to notify by querying the care-network
-    graph at decision time (see SPEC.md section 3, 7). The result is stored
-    on the MongoDB alert record, not in Neo4j itself.
-    """
+    """Resolve who to notify via Neo4j, write the alert to MongoDB."""
     resolution = neo4j_client.resolve_notified_doctor(neo4j_driver, patient_id)
     notified_doctor_id = resolution["doctor_id"] if resolution else None
 
