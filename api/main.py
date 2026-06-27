@@ -1,14 +1,4 @@
-"""
-VitalGraph API.
-
-Exposes vitals history, alerts, care-network escalation, and the
-device-correlation insight query, plus a WebSocket for live alert push.
-See SPEC.md for full architecture and rationale.
-
-Run with:
-    uvicorn api.main:app --reload --port 8000
-(run from the vitalgraph/ project root, not from inside api/)
-"""
+"""VitalGraph FastAPI backend. Run: uvicorn api.main:app --reload --port 8000"""
 
 import asyncio
 import json
@@ -60,7 +50,7 @@ app = FastAPI(title="VitalGraph API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # demo/course project scope — see README for note on this
+    allow_origins=["*"],  # fine for a course project, not for production
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -133,12 +123,7 @@ def get_device_correlation():
 
 @app.websocket("/ws/alerts")
 async def ws_alerts(websocket: WebSocket):
-    """
-    Live alert push. The router doesn't call this directly (it only writes
-    to MongoDB) — instead this endpoint polls MongoDB for new alerts and
-    forwards them, keeping the router and API decoupled (router doesn't
-    need to know the API exists).
-    """
+    """Polls MongoDB for new alerts and pushes them to the client."""
     await websocket.accept()
     state["ws_clients"].add(websocket)
     last_seen_id = None
