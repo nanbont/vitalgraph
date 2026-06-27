@@ -133,6 +133,7 @@ vitalgraph/
 │   ├── mongo/seed.js
 │   └── neo4j/seed.cypher, load_seed.sh
 ├── mosquitto/config/
+├── screenshots/
 ├── docker-compose.yml
 ├── requirements.txt
 ├── .env.example
