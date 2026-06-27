@@ -64,10 +64,9 @@ changes (a doctor's shift status, a new backup assignment).
 
 Started with Postgres, mainly for `TIMESTAMPTZ` and time-based window
 functions (`RANGE BETWEEN INTERVAL`) — would've made rolling averages a
-one-liner. Switched to MySQL partway through, since the other DB-B8
-submission I looked at for reference used SQLite (no real concurrent
-writes, felt too thin), and a different reference project used MySQL
-successfully for a similar pipeline.
+one-liner. Switched to MySQL partway through: SQLite felt too thin for
+this (no real concurrent writes, no actual client-server story), and
+MySQL was the better fit for a system meant to look production-minded.
 
 Cost of the switch: MySQL 8 supports `ROWS BETWEEN` but not time-based
 `RANGE BETWEEN INTERVAL`. A row-count window isn't the same thing as a
