@@ -1,11 +1,4 @@
-"""
-VitalGraph API: rolling average computation.
-
-MySQL 8's window functions don't support time-based RANGE BETWEEN INTERVAL
-(only row-count ROWS BETWEEN), so the rolling average over a time window is
-computed here in Python instead. See SPEC.md section 5 for the full
-rationale on this trade-off.
-"""
+"""Rolling average in Python — MySQL only supports row-count windows, not time-based ones."""
 
 from datetime import datetime, timedelta
 from statistics import mean
