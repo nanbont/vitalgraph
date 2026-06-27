@@ -1,9 +1,4 @@
-"""
-VitalGraph Router: MySQL writer.
-
-Writes vitals time-series readings. See SPEC.md section 5 for schema
-and rationale.
-"""
+"""MySQL writer for vitals readings."""
 
 import logging
 import os
@@ -64,7 +59,6 @@ def insert_activity(
 
 
 def fetch_recent_heartrate(conn, patient_id: str, limit: int = 100):
-    """Used by the API layer for rolling-average computation (see SPEC.md section 5)."""
     cur = conn.cursor(dictionary=True)
     cur.execute(
         "SELECT bpm, recorded_at FROM vitals_heartrate "
