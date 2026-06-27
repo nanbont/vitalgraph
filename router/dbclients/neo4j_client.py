@@ -1,11 +1,4 @@
-"""
-VitalGraph Router: Neo4j escalation queries.
-
-The graph is queried AT ALERT TIME to decide who to notify — it is not
-written to as an event log. See SPEC.md section 3 and 7 for the full
-rationale on why this keeps the graph's role honest (relationships, not
-records).
-"""
+"""Neo4j escalation queries — graph stores relationships, not alert events."""
 
 import os
 
@@ -33,11 +26,7 @@ RETURN coalesce(available, primary) AS notify, primary.name AS primary_name
 
 
 def resolve_notified_doctor(driver, patient_id: str) -> dict | None:
-    """
-    Returns {"doctor_id": ..., "doctor_name": ..., "primary_doctor_name": ...}
-    or None if the patient has no monitoring doctor (shouldn't happen with
-    seeded data, but the router should handle it gracefully rather than crash).
-    """
+    """None if patient has no monitoring doctor."""
     with driver.session() as session:
         result = session.run(ESCALATION_QUERY, patientId=patient_id)
         record = result.single()
@@ -51,8 +40,7 @@ def resolve_notified_doctor(driver, patient_id: str) -> dict | None:
         }
 
 
-# See SPEC.md section 7, Query 3 — analytical correlation, not used in the
-# real-time alert path. Exposed here for the API/dashboard layer.
+# analytical query, not used in the live alert path
 DEVICE_CORRELATION_QUERY = """
 MATCH (p1:Patient)-[:OWNS]->(d1:Device)
 MATCH (p2:Patient)-[:OWNS]->(d2:Device)
