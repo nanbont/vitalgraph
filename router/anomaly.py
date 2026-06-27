@@ -1,10 +1,4 @@
-"""
-VitalGraph Router: anomaly detection.
-
-Simple threshold checks, run immediately after a vitals write to MySQL.
-See SPEC.md section 8 for rationale (kept simple and explainable, not a
-black-box ML model — appropriate for the scope of this assignment).
-"""
+"""Heart rate / SpO2 threshold checks."""
 
 from shared_constants import HR_HIGH_THRESHOLD, HR_LOW_THRESHOLD, SPO2_LOW_THRESHOLD
 
