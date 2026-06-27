@@ -1,11 +1,4 @@
-"""
-VitalGraph Router: MongoDB writer.
-
-Writes alerts (event records) and updates device_metadata.last_seen.
-See SPEC.md section 6 for rationale — alerts and device metadata live
-here because their shape genuinely varies; they are NOT decorative uses
-of MongoDB.
-"""
+"""MongoDB writer for alerts and device metadata."""
 
 import os
 from datetime import datetime, timezone
@@ -37,12 +30,7 @@ def insert_alert(
     detail: dict,
     notified_doctor_id: str | None,
 ) -> str:
-    """
-    Insert an alert event record. notified_doctor_id is resolved by the
-    router via the Neo4j escalation query BEFORE this is called — the
-    graph is consulted at decision time, not used as a data store for
-    the alert itself (see SPEC.md section 3 and 7).
-    """
+    """notified_doctor_id is already resolved before this is called."""
     doc = {
         "patient_id": patient_id,
         "device_id": device_id,
@@ -75,10 +63,5 @@ def recent_alerts(db, patient_id: str | None = None, limit: int = 50):
 
 
 def all_device_metadata(db):
-    """
-    Returns every device_metadata document as-is. Used by the dashboard to
-    visibly demonstrate why this lives in MongoDB: different device models
-    have genuinely different fields (see SPEC.md section 6) — e.g. the
-    chest strap has no 'spo2'/'steps' capability, no GPS field, etc.
-    """
+    """All device_metadata documents, fields differ per model."""
     return list(db.device_metadata.find())
