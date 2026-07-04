@@ -34,7 +34,6 @@ MQTT_PORT = int(os.environ.get("MQTT_PORT", 1883))
 # How often each patient's device publishes a heart-rate reading.
 MIN_INTERVAL_SECONDS = 10
 MAX_INTERVAL_SECONDS = 30
-MAX_TICKS = 50
 
 # Roughly 1 in N readings is anomalous. Tuned so a 3-patient demo run of a
 # few minutes will reliably show at least one alert without every reading
@@ -161,13 +160,12 @@ def main():
         for patient_id, profile in PATIENTS.items()
     ]
 
-    log.info("Publishing vitals for %d patients, %d ticks max. Ctrl+C to stop early.", len(simulators), MAX_TICKS)
+    log.info("Publishing vitals for %d patients. Ctrl+C to stop.", len(simulators))
     try:
-        for tick_number in range(MAX_TICKS):
+        while True:
             for sim in simulators:
                 sim.tick(client)
             time.sleep(random.randint(MIN_INTERVAL_SECONDS, MAX_INTERVAL_SECONDS))
-        log.info("Reached tick limit, stopping.")
     except KeyboardInterrupt:
         log.info("Stopping publisher.")
     finally:
