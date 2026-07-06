@@ -52,18 +52,18 @@ CREATE INDEX idx_activity_patient_time ON vitals_activity (patient_id, recorded_
 -- Seed data: 5 demo patients + devices. IDs match the Mongo/Neo4j seeds.
 
 INSERT INTO patients (patient_id, name, date_of_birth) VALUES
-    ('RMNLCA85C54F158S', 'Alice Romano', '1985-03-14'),
-    ('BLLMRC72S02F158W', 'Marco Bellini', '1972-11-02'),
-    ('CNTSRA90L62F158K', 'Sara Conti', '1990-07-22'),
+    ('BKLTST85C54F158P', 'Tigist Bekele', '1985-03-14'),
+    ('HLADWT72S02F158E', 'Dawit Haile', '1972-11-02'),
+    ('GRMHWT90L62F158Y', 'Hiwot Girma', '1990-07-22'),
     ('BKLBDA88E19F158V', 'Abdi Bekele', '1988-05-19'),
     ('BRHBNT95P48F158M', 'Abinat Birhanu', '1995-09-08');
 
 INSERT INTO devices (device_id, patient_id, device_type) VALUES
-    ('WXP-6305', 'RMNLCA85C54F158S', 'smartwatch'),
-    ('CSE-3471', 'BLLMRC72S02F158W', 'chest_strap'),
-    ('WXL-7468', 'CNTSRA90L62F158K', 'smartwatch'),
-    ('WXP-1791', 'BKLBDA88E19F158V', 'smartwatch'),
-    ('WXL-2186', 'BRHBNT95P48F158M', 'smartwatch');
+    ('WXP-6305', 'BKLTST85C54F158P', 'Apple Watch Series 9'),
+    ('CSE-3471', 'HLADWT72S02F158E', 'Polar H10'),
+    ('WXL-7468', 'GRMHWT90L62F158Y', 'Fitbit Charge 6'),
+    ('WXP-1791', 'BKLBDA88E19F158V', 'Apple Watch Series 9'),
+    ('WXL-2186', 'BRHBNT95P48F158M', 'Fitbit Charge 6');
 
 CREATE TABLE anomaly_log (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,

@@ -16,34 +16,34 @@ convention. Doctor IDs follow a hospital staff-code convention
 """
 
 PATIENTS = {
-    "RMNLCA85C54F158S": {
-        "name": "Alice Romano",
+    "BKLTST85C54F158P": {
+        "name": "Tigist Bekele",
         "device_id": "WXP-6305",
-        "device_type": "smartwatch",
+        "device_type": "Apple Watch Series 9",
         "capabilities": ["heartrate", "spo2", "steps", "sleep"],
     },
-    "BLLMRC72S02F158W": {
-        "name": "Marco Bellini",
+    "HLADWT72S02F158E": {
+        "name": "Dawit Haile",
         "device_id": "CSE-3471",
-        "device_type": "chest_strap",
-        "capabilities": ["heartrate"],  # chest straps don't track spo2/steps/sleep
+        "device_type": "Polar H10",
+        "capabilities": ["heartrate"],
     },
-    "CNTSRA90L62F158K": {
-        "name": "Sara Conti",
+    "GRMHWT90L62F158Y": {
+        "name": "Hiwot Girma",
         "device_id": "WXL-7468",
-        "device_type": "smartwatch",
+        "device_type": "Fitbit Charge 6",
         "capabilities": ["heartrate", "spo2", "steps"],
     },
     "BKLBDA88E19F158V": {
         "name": "Abdi Bekele",
         "device_id": "WXP-1791",
-        "device_type": "smartwatch",
+        "device_type": "Apple Watch Series 9",
         "capabilities": ["heartrate", "spo2", "steps", "sleep"],
     },
     "BRHBNT95P48F158M": {
         "name": "Abinat Birhanu",
         "device_id": "WXL-2186",
-        "device_type": "smartwatch",
+        "device_type": "Fitbit Charge 6",
         "capabilities": ["heartrate", "spo2", "steps"],
     },
 }
