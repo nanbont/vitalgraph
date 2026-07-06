@@ -65,3 +65,16 @@ def doctor_name_by_id(driver, doctor_id: str | None) -> str | None:
         result = session.run(DOCTOR_BY_ID_QUERY, doctorId=doctor_id)
         record = result.single()
         return record["name"] if record else None
+
+
+ONCALL_DOCTORS_QUERY = """
+MATCH (d:Doctor {on_duty: true})
+OPTIONAL MATCH (p:Patient)-[:MONITORED_BY]->(d)
+RETURN d.name AS doctor, d.specialty AS specialty, count(p) AS patient_count
+ORDER BY patient_count DESC
+"""
+
+def get_oncall_doctors(driver) -> list[dict]:
+    with driver.session() as session:
+        result = session.run(ONCALL_DOCTORS_QUERY)
+        return [dict(record) for record in result]
