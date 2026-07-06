@@ -65,3 +65,23 @@ def recent_alerts(db, patient_id: str | None = None, limit: int = 50):
 def all_device_metadata(db):
     """All device_metadata documents, fields differ per model."""
     return list(db.device_metadata.find())
+
+
+def alert_stats_by_patient(db):
+    pipeline = [
+        {
+            "$group": {
+                "_id": "$patient_id",
+                "total_alerts": {"$sum": 1},
+                "heartrate_alerts": {
+                    "$sum": {"$cond": [{"$eq": ["$alert_type", "abnormal_heartrate"]}, 1, 0]}
+                },
+                "spo2_alerts": {
+                    "$sum": {"$cond": [{"$eq": ["$alert_type", "low_spo2"]}, 1, 0]}
+                },
+                "last_alert": {"$max": "$detected_at"},
+            }
+        },
+        {"$sort": {"total_alerts": -1}},
+    ]
+    return list(db.alerts.aggregate(pipeline))

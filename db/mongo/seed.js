@@ -66,4 +66,9 @@ db.symptom_logs.insertMany([
   }
 ]);
 
+db.alerts.createIndex(
+  { detected_at: 1 },
+  { expireAfterSeconds: 2592000, name: "ttl_alerts_30days" }
+);
+
 print("VitalGraph MongoDB seed complete.");
