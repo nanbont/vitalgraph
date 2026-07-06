@@ -64,3 +64,45 @@ INSERT INTO devices (device_id, patient_id, device_type) VALUES
     ('WXL-7468', 'CNTSRA90L62F158K', 'smartwatch'),
     ('WXP-1791', 'BKLBDA88E19F158V', 'smartwatch'),
     ('WXL-2186', 'BRHBNT95P48F158M', 'smartwatch');
+
+-- Anomaly log table: populated automatically by triggers, not by application code
+CREATE TABLE anomaly_log (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    patient_id CHAR(36) NOT NULL,
+    device_id CHAR(36) NOT NULL,
+    reading_type VARCHAR(20) NOT NULL,
+    value DECIMAL(6,1) NOT NULL,
+    direction VARCHAR(4) NOT NULL,
+    threshold DECIMAL(6,1) NOT NULL,
+    logged_at DATETIME DEFAULT (UTC_TIMESTAMP()),
+    FOREIGN KEY (patient_id) REFERENCES patients(patient_id)
+);
+
+-- Trigger: fires after every heart rate insert, logs anomalies automatically
+DELIMITER //
+CREATE TRIGGER trg_heartrate_anomaly
+AFTER INSERT ON vitals_heartrate
+FOR EACH ROW
+BEGIN
+    IF NEW.bpm > 140 THEN
+        INSERT INTO anomaly_log (patient_id, device_id, reading_type, value, direction, threshold)
+        VALUES (NEW.patient_id, NEW.device_id, 'heartrate', NEW.bpm, 'high', 140);
+    ELSEIF NEW.bpm < 40 THEN
+        INSERT INTO anomaly_log (patient_id, device_id, reading_type, value, direction, threshold)
+        VALUES (NEW.patient_id, NEW.device_id, 'heartrate', NEW.bpm, 'low', 40);
+    END IF;
+END//
+DELIMITER ;
+
+-- Trigger: fires after every SpO2 insert, logs anomalies automatically
+DELIMITER //
+CREATE TRIGGER trg_spo2_anomaly
+AFTER INSERT ON vitals_spo2
+FOR EACH ROW
+BEGIN
+    IF NEW.spo2_pct < 92 THEN
+        INSERT INTO anomaly_log (patient_id, device_id, reading_type, value, direction, threshold)
+        VALUES (NEW.patient_id, NEW.device_id, 'spo2', NEW.spo2_pct, 'low', 92);
+    END IF;
+END//
+DELIMITER ;
