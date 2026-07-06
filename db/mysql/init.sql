@@ -65,7 +65,6 @@ INSERT INTO devices (device_id, patient_id, device_type) VALUES
     ('WXP-1791', 'BKLBDA88E19F158V', 'smartwatch'),
     ('WXL-2186', 'BRHBNT95P48F158M', 'smartwatch');
 
--- Anomaly log table: populated automatically by triggers, not by application code
 CREATE TABLE anomaly_log (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     patient_id CHAR(36) NOT NULL,
@@ -78,7 +77,6 @@ CREATE TABLE anomaly_log (
     FOREIGN KEY (patient_id) REFERENCES patients(patient_id)
 );
 
--- Trigger: fires after every heart rate insert, logs anomalies automatically
 DELIMITER //
 CREATE TRIGGER trg_heartrate_anomaly
 AFTER INSERT ON vitals_heartrate
@@ -94,7 +92,6 @@ BEGIN
 END//
 DELIMITER ;
 
--- Trigger: fires after every SpO2 insert, logs anomalies automatically
 DELIMITER //
 CREATE TRIGGER trg_spo2_anomaly
 AFTER INSERT ON vitals_spo2
@@ -104,5 +101,53 @@ BEGIN
         INSERT INTO anomaly_log (patient_id, device_id, reading_type, value, direction, threshold)
         VALUES (NEW.patient_id, NEW.device_id, 'spo2', NEW.spo2_pct, 'low', 92);
     END IF;
+END//
+DELIMITER ;
+
+CREATE VIEW patient_vitals_summary AS
+SELECT 
+    p.patient_id,
+    p.name,
+    p.date_of_birth,
+    hr.bpm AS latest_bpm,
+    hr.recorded_at AS latest_hr_time,
+    s.spo2_pct AS latest_spo2,
+    s.recorded_at AS latest_spo2_time,
+    COUNT(a.id) AS total_anomalies
+FROM patients p
+LEFT JOIN vitals_heartrate hr ON hr.patient_id = p.patient_id
+    AND hr.recorded_at = (
+        SELECT MAX(recorded_at) FROM vitals_heartrate 
+        WHERE patient_id = p.patient_id
+    )
+LEFT JOIN vitals_spo2 s ON s.patient_id = p.patient_id
+    AND s.recorded_at = (
+        SELECT MAX(recorded_at) FROM vitals_spo2 
+        WHERE patient_id = p.patient_id
+    )
+LEFT JOIN anomaly_log a ON a.patient_id = p.patient_id
+GROUP BY p.patient_id, p.name, p.date_of_birth, hr.bpm, hr.recorded_at, s.spo2_pct, s.recorded_at;
+
+DELIMITER //
+CREATE PROCEDURE get_patient_summary(IN p_id CHAR(36))
+BEGIN
+    SELECT 
+        p.name,
+        p.date_of_birth,
+        hr.bpm AS latest_bpm,
+        hr.recorded_at AS latest_hr_time,
+        s.spo2_pct AS latest_spo2
+    FROM patients p
+    LEFT JOIN vitals_heartrate hr ON hr.patient_id = p.patient_id
+        AND hr.recorded_at = (SELECT MAX(recorded_at) FROM vitals_heartrate WHERE patient_id = p_id)
+    LEFT JOIN vitals_spo2 s ON s.patient_id = p.patient_id
+        AND s.recorded_at = (SELECT MAX(recorded_at) FROM vitals_spo2 WHERE patient_id = p_id)
+    WHERE p.patient_id = p_id;
+
+    SELECT reading_type, value, direction, threshold, logged_at
+    FROM anomaly_log
+    WHERE patient_id = p_id
+    ORDER BY logged_at DESC
+    LIMIT 5;
 END//
 DELIMITER ;
