@@ -124,6 +124,7 @@ with st.sidebar:
     st.markdown('<p class="vg-eyebrow">Patient</p>', unsafe_allow_html=True)
     selected_id = st.radio("Patient", options=list(patient_names.keys()), format_func=lambda pid: patient_names[pid], label_visibility="collapsed")
     st.divider()
+    st.divider()
     st.markdown("**Patients — MySQL**")
     df_patients = pd.DataFrame(patients)[["patient_id", "name", "date_of_birth"]]
     df_patients["date_of_birth"] = pd.to_datetime(df_patients["date_of_birth"]).dt.strftime("%Y-%m-%d")
@@ -170,6 +171,34 @@ try:
         m3.metric("Total Anomalies", summary['total_anomalies'])
 except Exception:
     pass
+
+st.write("")
+
+# Patient summary from stored procedure
+st.markdown('<p class="vg-section-label">Patient summary · MySQL stored procedure</p>', unsafe_allow_html=True)
+try:
+    cur = get_mysql().cursor(dictionary=True)
+    cur.callproc("get_patient_summary", (selected_id,))
+    results = []
+    for result in cur.stored_results():
+        results.append(result.fetchall())
+    cur.close()
+    proc_col1, proc_col2 = st.columns(2, gap="large")
+    with proc_col1:
+        if results and results[0]:
+            r = results[0][0]
+            st.write(f"**{r['name']}** · DOB: {r['date_of_birth']}")
+            st.write(f"Latest HR: {r['latest_bpm']} bpm · Latest SpO2: {r['latest_spo2']}%")
+    with proc_col2:
+        if len(results) > 1 and results[1]:
+            df_proc = pd.DataFrame(results[1])
+            df_proc["logged_at"] = pd.to_datetime(df_proc["logged_at"]).dt.strftime("%H:%M:%S")
+            df_proc = df_proc.rename(columns={"reading_type": "Type", "value": "Value", "direction": "Dir", "logged_at": "Time", "threshold": "Threshold"})
+            st.dataframe(df_proc, use_container_width=True, hide_index=True)
+        else:
+            st.info("No anomalies for this patient.")
+except Exception as e:
+    st.error(f"Procedure error: {e}")
 
 st.write("")
 
@@ -225,6 +254,94 @@ with col_feed:
                     <div class="vg-alert-meta">{detail_str} · {alert['detected_at'].strftime('%H:%M:%S')}</div>
                     {notify_html}
                 </div>""", unsafe_allow_html=True)
+
+st.write("")
+st.divider()
+
+# ── ROW 2: ON-CALL DOCTORS | ALERT STATS | ANOMALY LOG ───────────────
+col_oncall, col_stats, col_anomaly = st.columns(3, gap="large")
+
+with col_oncall:
+    st.markdown('<p class="vg-section-label">On-call doctors · Neo4j</p>', unsafe_allow_html=True)
+    oncall = neo4j_client.get_oncall_doctors(conn["neo4j"])
+    if oncall:
+        for doc in oncall:
+            st.markdown(f"""
+                <div class="vg-oncall-card">
+                    <div class="vg-oncall-name">{doc['doctor']}</div>
+                    <div class="vg-oncall-meta">{doc['specialty']} · {doc['patient_count']} patient(s)</div>
+                </div>""", unsafe_allow_html=True)
+    else:
+        st.info("No doctors on duty.")
+
+with col_stats:
+    st.markdown('<p class="vg-section-label">Alert statistics · MongoDB</p>', unsafe_allow_html=True)
+    stats = mongo_client.alert_stats_by_patient(conn["mongo_db"])
+    if stats:
+        for s in stats:
+            name = patient_names.get(s["_id"], s["_id"])
+            st.markdown(f"""
+                <div class="vg-stat-card">
+                    <div class="vg-stat-name">{name}</div>
+                    <div class="vg-stat-numbers">Total: {s['total_alerts']} · HR: {s['heartrate_alerts']} · SpO2: {s['spo2_alerts']}</div>
+                </div>""", unsafe_allow_html=True)
+    else:
+        st.info("No alert data yet.")
+
+with col_anomaly:
+    st.markdown('<p class="vg-section-label">Anomaly log · MySQL trigger</p>', unsafe_allow_html=True)
+    try:
+        cur = get_mysql().cursor(dictionary=True)
+        cur.execute("""
+            SELECT p.name, a.reading_type, a.value, a.direction, a.logged_at
+            FROM anomaly_log a
+            JOIN patients p ON p.patient_id = a.patient_id
+            ORDER BY a.logged_at DESC LIMIT 8
+        """)
+        anomaly_rows = cur.fetchall()
+        cur.close()
+        if anomaly_rows:
+            df_anomaly = pd.DataFrame(anomaly_rows)
+            df_anomaly = df_anomaly.rename(columns={"name": "Patient", "reading_type": "Type", "value": "Value", "direction": "Dir", "logged_at": "Time"})
+            st.dataframe(df_anomaly, use_container_width=True, hide_index=True)
+        else:
+            st.info("No anomalies logged yet.")
+    except Exception as e:
+        st.error(f"Error: {e}")
+
+st.write("")
+st.divider()
+
+# ── ROW 3: DEVICE METADATA | DEVICE CORRELATION ──────────────────────
+col_mongo, col_neo4j = st.columns(2, gap="large")
+
+with col_mongo:
+    st.markdown('<p class="vg-section-label">Device metadata · MongoDB</p>', unsafe_allow_html=True)
+    devices = mongo_client.all_device_metadata(conn["mongo_db"])
+    if devices:
+        df_devices = pd.DataFrame(devices)
+        df_devices["_id"] = df_devices["_id"].apply(short_id)
+        df_devices["capabilities"] = df_devices["capabilities"].apply(lambda x: ", ".join(x) if isinstance(x, list) else str(x))
+        df_devices = df_devices[["_id", "model", "firmware_version", "battery_pct", "capabilities"]]
+        df_devices = df_devices.rename(columns={"_id": "ID", "model": "Model", "firmware_version": "Firmware", "battery_pct": "Bat%", "capabilities": "Capabilities"})
+        st.dataframe(df_devices, use_container_width=True, hide_index=True, column_config={
+            "ID": st.column_config.TextColumn(width="small"),
+            "Model": st.column_config.TextColumn(width="medium"),
+            "Firmware": st.column_config.TextColumn(width="small"),
+            "Bat%": st.column_config.NumberColumn(width="small"),
+            "Capabilities": st.column_config.TextColumn(width="large"),
+        })
+    else:
+        st.info("No device metadata found.")
+
+with col_neo4j:
+    st.markdown('<p class="vg-section-label">Device correlation · Neo4j</p>', unsafe_allow_html=True)
+    st.caption("Patients sharing a device type — useful for spotting faulty device batches.")
+    pairs = neo4j_client.device_sharing_pairs(conn["neo4j"])
+    if pairs:
+        st.dataframe(pd.DataFrame(pairs), use_container_width=True, hide_index=True)
+    else:
+        st.info("No device-sharing pairs found.")
 
 st.write("")
 st.divider()
@@ -313,89 +430,6 @@ except Exception:
 st.write("")
 st.divider()
 
-# ── ROW 2: ON-CALL DOCTORS | ALERT STATS | ANOMALY LOG ───────────────
-col_oncall, col_stats, col_anomaly = st.columns(3, gap="large")
-
-with col_oncall:
-    st.markdown('<p class="vg-section-label">On-call doctors · Neo4j</p>', unsafe_allow_html=True)
-    oncall = neo4j_client.get_oncall_doctors(conn["neo4j"])
-    if oncall:
-        for doc in oncall:
-            st.markdown(f"""
-                <div class="vg-oncall-card">
-                    <div class="vg-oncall-name">{doc['doctor']}</div>
-                    <div class="vg-oncall-meta">{doc['specialty']} · {doc['patient_count']} patient(s)</div>
-                </div>""", unsafe_allow_html=True)
-    else:
-        st.info("No doctors on duty.")
-
-with col_stats:
-    st.markdown('<p class="vg-section-label">Alert statistics · MongoDB</p>', unsafe_allow_html=True)
-    stats = mongo_client.alert_stats_by_patient(conn["mongo_db"])
-    if stats:
-        for s in stats:
-            name = patient_names.get(s["_id"], s["_id"])
-            st.markdown(f"""
-                <div class="vg-stat-card">
-                    <div class="vg-stat-name">{name}</div>
-                    <div class="vg-stat-numbers">Total: {s['total_alerts']} · HR: {s['heartrate_alerts']} · SpO2: {s['spo2_alerts']}</div>
-                </div>""", unsafe_allow_html=True)
-    else:
-        st.info("No alert data yet.")
-
-with col_anomaly:
-    st.markdown('<p class="vg-section-label">Anomaly log · MySQL trigger</p>', unsafe_allow_html=True)
-    try:
-        cur = get_mysql().cursor(dictionary=True)
-        cur.execute("""
-            SELECT p.name, a.reading_type, a.value, a.direction, a.logged_at
-            FROM anomaly_log a
-            JOIN patients p ON p.patient_id = a.patient_id
-            ORDER BY a.logged_at DESC LIMIT 8
-        """)
-        anomaly_rows = cur.fetchall()
-        cur.close()
-        if anomaly_rows:
-            df_anomaly = pd.DataFrame(anomaly_rows)
-            df_anomaly = df_anomaly.rename(columns={"name": "Patient", "reading_type": "Type", "value": "Value", "direction": "Dir", "logged_at": "Time"})
-            st.dataframe(df_anomaly, use_container_width=True, hide_index=True)
-        else:
-            st.info("No anomalies logged yet.")
-    except Exception as e:
-        st.error(f"Error: {e}")
-
-st.write("")
-st.divider()
-
-# ── ROW 3: DEVICE METADATA | DEVICE CORRELATION ──────────────────────
-col_mongo, col_neo4j = st.columns(2, gap="large")
-
-with col_mongo:
-    st.markdown('<p class="vg-section-label">Device metadata · MongoDB</p>', unsafe_allow_html=True)
-    devices = mongo_client.all_device_metadata(conn["mongo_db"])
-    if devices:
-        df_devices = pd.DataFrame(devices)
-        df_devices["_id"] = df_devices["_id"].apply(short_id)
-        df_devices["capabilities"] = df_devices["capabilities"].apply(lambda x: ", ".join(x) if isinstance(x, list) else str(x))
-        df_devices = df_devices[["_id", "model", "firmware_version", "battery_pct", "capabilities"]]
-        df_devices = df_devices.rename(columns={"_id": "ID", "model": "Model", "firmware_version": "Firmware", "battery_pct": "Bat%", "capabilities": "Capabilities"})
-        st.dataframe(df_devices, use_container_width=True, hide_index=True, column_config={
-            "ID": st.column_config.TextColumn(width="small"),
-            "Model": st.column_config.TextColumn(width="medium"),
-            "Firmware": st.column_config.TextColumn(width="small"),
-            "Bat%": st.column_config.NumberColumn(width="small"),
-            "Capabilities": st.column_config.TextColumn(width="large"),
-        })
-    else:
-        st.info("No device metadata found.")
-
-with col_neo4j:
-    st.markdown('<p class="vg-section-label">Device correlation · Neo4j</p>', unsafe_allow_html=True)
-    pairs = neo4j_client.device_sharing_pairs(conn["neo4j"])
-    if pairs:
-        st.dataframe(pd.DataFrame(pairs), use_container_width=True, hide_index=True)
-    else:
-        st.info("No device-sharing pairs found.")
 
 st.write("")
 st.divider()
