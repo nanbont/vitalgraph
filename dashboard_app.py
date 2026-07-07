@@ -229,6 +229,90 @@ with col_feed:
 st.write("")
 st.divider()
 
+# ── PERFORMANCE ROW ───────────────────────────────────────────────────
+st.markdown('<p class="vg-section-label">System performance</p>', unsafe_allow_html=True)
+
+import time
+
+perf1, perf2, perf3, perf4, perf5 = st.columns(5)
+
+try:
+    cur = get_mysql().cursor(dictionary=True)
+
+    cur.execute("SELECT COUNT(*) AS total FROM vitals_heartrate")
+    hr_count = cur.fetchone()["total"]
+
+    cur.execute("SELECT COUNT(*) AS total FROM vitals_spo2")
+    spo2_count = cur.fetchone()["total"]
+
+    cur.execute("SELECT COUNT(*) AS total FROM vitals_activity")
+    activity_count = cur.fetchone()["total"]
+
+    cur.execute("""
+        SELECT COUNT(*) AS total FROM vitals_heartrate
+        WHERE recorded_at >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL 60 SECOND)
+    """)
+    recent_count = cur.fetchone()["total"]
+    cur.close()
+
+    total_readings = hr_count + spo2_count + activity_count
+
+    perf1.metric("Total readings · MySQL", f"{total_readings:,}")
+    perf2.metric("Readings last 60s", recent_count)
+except Exception:
+    perf1.metric("Total readings · MySQL", "—")
+    perf2.metric("Readings last 60s", "—")
+
+try:
+    alert_count = conn["mongo_db"].alerts.count_documents({})
+    perf3.metric("Alerts fired · MongoDB", alert_count)
+except Exception:
+    perf3.metric("Alerts fired · MongoDB", "—")
+
+try:
+    t0 = time.time()
+    neo4j_client.resolve_notified_doctor(conn["neo4j"], selected_id)
+    elapsed_ms = round((time.time() - t0) * 1000)
+    perf4.metric("Escalation query · Neo4j", f"{elapsed_ms} ms")
+except Exception:
+    perf4.metric("Escalation query · Neo4j", "—")
+
+try:
+    cur2 = get_mysql().cursor(dictionary=True)
+    cur2.execute("SELECT COUNT(*) AS total FROM anomaly_log")
+    anomaly_count = cur2.fetchone()["total"]
+    cur2.close()
+    perf5.metric("Anomalies logged · trigger", anomaly_count)
+except Exception:
+    perf5.metric("Anomalies logged · trigger", "—")
+
+
+try:
+    chart_data = pd.DataFrame({
+        "Database": ["HR readings", "SpO2 readings", "Activity", "Alerts", "Anomaly log"],
+        "Records": [hr_count, spo2_count, activity_count, alert_count, anomaly_count],
+        "Color": [TEAL, TEAL, TEAL, RED, AMBER],
+    })
+    bar = (
+        alt.Chart(chart_data)
+        .mark_bar()
+        .encode(
+            x=alt.X("Database:N", title=None, axis=alt.Axis(labelAngle=0)),
+            y=alt.Y("Records:Q", title="Records"),
+            color=alt.Color("Color:N", scale=None, legend=None),
+            tooltip=["Database", "Records"],
+        )
+        .configure_axis(labelFont="IBM Plex Mono", titleFont="IBM Plex Sans", grid=False)
+        .configure_view(strokeWidth=0)
+        .properties(height=180)
+    )
+    st.altair_chart(bar, use_container_width=True)
+except Exception:
+    pass
+
+st.write("")
+st.divider()
+
 # ── ROW 2: ON-CALL DOCTORS | ALERT STATS | ANOMALY LOG ───────────────
 col_oncall, col_stats, col_anomaly = st.columns(3, gap="large")
 
