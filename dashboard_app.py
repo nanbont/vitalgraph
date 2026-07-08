@@ -335,10 +335,19 @@ with col_mongo:
         st.info("No device metadata found.")
 
 with col_neo4j:
-    st.markdown('<p class="vg-section-label">Device correlation · Neo4j</p>', unsafe_allow_html=True)
-    st.caption("Patients sharing a device type — useful for spotting faulty device batches.")
+    st.markdown('<p class="vg-section-label">Device correlation · Neo4j + MongoDB</p>', unsafe_allow_html=True)
+    st.caption("Patients sharing a device type, with MongoDB alert clustering check.")
     pairs = neo4j_client.device_sharing_pairs(conn["neo4j"])
     if pairs:
+        name_to_id = {p["name"]: pid for pid, p in PATIENTS.items()}
+        for pair in pairs:
+            pid_a = name_to_id.get(pair["patient_a"])
+            pid_b = name_to_id.get(pair["patient_b"])
+            if pid_a and pid_b:
+                pair["Alerts within 1hr"] = "Yes" if mongo_client.patients_alerted_within_hour(
+                    conn["mongo_db"], pid_a, pid_b) else "No"
+            else:
+                pair["Alerts within 1hr"] = "N/A"
         st.dataframe(pd.DataFrame(pairs), use_container_width=True, hide_index=True)
     else:
         st.info("No device-sharing pairs found.")

@@ -85,3 +85,19 @@ def alert_stats_by_patient(db):
         {"$sort": {"total_alerts": -1}},
     ]
     return list(db.alerts.aggregate(pipeline))
+
+
+def patients_alerted_within_hour(db, patient_id_1: str, patient_id_2: str) -> bool:
+    pipeline = [
+        {"$match": {"patient_id": {"$in": [patient_id_1, patient_id_2]}}},
+        {"$group": {
+            "_id": "$patient_id",
+            "latest_alert": {"$max": "$detected_at"}
+        }}
+    ]
+    results = list(db.alerts.aggregate(pipeline))
+    if len(results) < 2:
+        return False
+    times = [r["latest_alert"] for r in results]
+    diff = abs((times[0] - times[1]).total_seconds())
+    return diff <= 3600
