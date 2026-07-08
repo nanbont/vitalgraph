@@ -68,7 +68,7 @@ Then, two terminals:
 
 ```bash
 # terminal 1
-python router/router.py
+python router/subscriber.py
 
 # terminal 2
 python publisher/publisher.py
@@ -122,7 +122,7 @@ docker exec -it vitalgraph-mongo mongosh -u vitaluser -p vitalpass \
 vitalgraph/
 ├── publisher/publisher.py     simulated wearables, publishes to MQTT
 ├── router/
-│   ├── router.py               subscribe + dispatch + anomaly detection
+│   ├── subscriber.py          subscribe + dispatch + anomaly detection
 │   ├── anomaly.py               threshold checks
 │   └── dbclients/               MySQL/Mongo/Neo4j client wrappers
 ├── api/main.py                 FastAPI backend

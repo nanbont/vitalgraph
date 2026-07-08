@@ -295,7 +295,7 @@ Not a big loss; one less moving part.)
 vitalgraph/
 ├── publisher/publisher.py
 ├── router/
-│   ├── router.py
+│   ├── subscriber.py
 │   ├── anomaly.py
 │   └── dbclients/
 ├── api/main.py

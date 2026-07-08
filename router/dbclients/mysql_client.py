@@ -1,16 +1,16 @@
 """MySQL writer for vitals readings."""
 
-import logging
-import os
+import logging    
+import os         
 
-import mysql.connector
+import mysql.connector   
 
-log = logging.getLogger(__name__)
+log = logging.getLogger(__name__)  
 
 
 def get_connection():
     return mysql.connector.connect(
-        host=os.environ.get("MYSQL_HOST", "localhost"),
+        host=os.environ.get("MYSQL_HOST", "localhost"), 
         port=int(os.environ.get("MYSQL_PORT", 3306)),
         user=os.environ.get("MYSQL_USER", "vitaluser"),
         password=os.environ.get("MYSQL_PASSWORD", "vitalpass"),
@@ -25,8 +25,8 @@ def insert_heartrate(conn, patient_id: str, device_id: str, bpm: int, recorded_a
         "VALUES (%s, %s, %s, %s)",
         (patient_id, device_id, bpm, recorded_at),
     )
-    conn.commit()
-    cur.close()
+    conn.commit() 
+    cur.close()   
 
 
 def insert_spo2(conn, patient_id: str, device_id: str, spo2_pct: float, recorded_at: str):
@@ -45,7 +45,7 @@ def insert_activity(
     patient_id: str,
     device_id: str,
     recorded_at: str,
-    steps: int | None = None,
+    steps: int | None = None,    # THE = None means that steps and sleeos are here optional, means if the device doesnot send the sleep and step, the function will be called and replcae Null in those positions
     sleep_minutes: int | None = None,
 ):
     cur = conn.cursor()

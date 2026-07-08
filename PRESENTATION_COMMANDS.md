@@ -23,7 +23,7 @@ source .venv/bin/activate
 ## 3. Terminal 1 — router
 
 ```bash
-python router/router.py
+python router/subscriber.py
 ```
 subscribes to MQTT, waits for messages, runs the escalation query when an anomaly fires
 
