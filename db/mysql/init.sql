@@ -151,3 +151,17 @@ BEGIN
     LIMIT 5;
 END//
 DELIMITER ;
+
+CREATE TABLE vitals_heartrate_archive LIKE vitals_heartrate;
+
+DELIMITER //
+CREATE PROCEDURE archive_old_readings()
+BEGIN
+    INSERT INTO vitals_heartrate_archive
+        SELECT * FROM vitals_heartrate
+        WHERE recorded_at < DATE_SUB(UTC_TIMESTAMP(), INTERVAL 30 MINUTE);
+    DELETE FROM vitals_heartrate
+        WHERE recorded_at < DATE_SUB(UTC_TIMESTAMP(), INTERVAL 30 MINUTE);
+    SELECT ROW_COUNT() AS rows_archived;
+END//
+DELIMITER ;
