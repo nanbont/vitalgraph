@@ -165,3 +165,9 @@ BEGIN
     SELECT ROW_COUNT() AS rows_archived;
 END//
 DELIMITER ;
+
+SET GLOBAL event_scheduler = ON;
+
+CREATE EVENT auto_archive
+ON SCHEDULE EVERY 30 MINUTE
+DO CALL archive_old_readings();
