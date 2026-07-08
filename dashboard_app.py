@@ -403,6 +403,15 @@ try:
 except Exception:
     perf5.metric("Anomalies logged · trigger", "—")
 
+try:
+    cur3 = get_mysql().cursor(dictionary=True)
+    cur3.execute("SELECT COUNT(*) AS total FROM vitals_heartrate_archive")
+    archive_count = cur3.fetchone()["total"]
+    cur3.close()
+    st.metric("Archived readings · MySQL", f"{archive_count:,}")
+except Exception:
+    st.metric("Archived readings · MySQL", "—")
+
 
 try:
     chart_data = pd.DataFrame({
