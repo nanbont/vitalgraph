@@ -4,6 +4,8 @@ Health monitoring platform for the DB-B8 (Health & Wellness) track — Database 
 
 Simulated wearable devices publish vital signs over MQTT. A Python subscriber routes each message to the database best suited for that type of data: MySQL for structured time-series, MongoDB for variable-structure alerts and device metadata, and Neo4j for the care network. When a reading crosses an anomaly threshold, the subscriber queries Neo4j live to resolve which doctor to notify, walking a backup chain of up to two hops if the primary doctor is unavailable.
 
+![VitalGraph](screenshots/wearable_devices.png)
+
 ## What the system does
 
 - Five patients with real wearable device brands (Apple Watch Series 9, Fitbit Charge 6, Polar H10)
