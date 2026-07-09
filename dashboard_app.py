@@ -344,10 +344,10 @@ with col_neo4j:
             pid_a = name_to_id.get(pair["patient_a"])
             pid_b = name_to_id.get(pair["patient_b"])
             if pid_a and pid_b:
-                pair["Alerts within 1hr"] = "Yes" if mongo_client.patients_alerted_within_hour(
+                pair["Alerts within 10min"] = "Yes" if mongo_client.patients_alerted_within_hour(
                     conn["mongo_db"], pid_a, pid_b) else "No"
             else:
-                pair["Alerts within 1hr"] = "N/A"
+                pair["Alerts within 10min"] = "N/A"
         st.dataframe(pd.DataFrame(pairs), use_container_width=True, hide_index=True)
     else:
         st.info("No device-sharing pairs found.")

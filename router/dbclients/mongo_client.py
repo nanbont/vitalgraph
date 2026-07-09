@@ -100,4 +100,4 @@ def patients_alerted_within_hour(db, patient_id_1: str, patient_id_2: str) -> bo
         return False
     times = [r["latest_alert"] for r in results]
     diff = abs((times[0] - times[1]).total_seconds())
-    return diff <= 3600
+    return diff <= 600
