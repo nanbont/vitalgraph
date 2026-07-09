@@ -75,7 +75,6 @@ def handle_anomaly(
 def make_on_message(mysql_conn, mongo_db, neo4j_driver):
     def on_message(client, userdata, msg):
         parts = msg.topic.split("/")
-        # vitalgraph/{patient_id}/{category}/{subtype}
         if len(parts) < 3:
             log.warning("Ignoring malformed topic: %s", msg.topic)
             return

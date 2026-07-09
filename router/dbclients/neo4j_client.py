@@ -14,7 +14,6 @@ def get_driver():
 
 # See SPEC.md section 7, Query 1. Semantics reminder: (X)-[:BACKUP_FOR]->(Y)
 # means "X is the backup for Y", so we walk BACKWARDS from the primary
-# doctor to find a covering, on-duty doctor.
 ESCALATION_QUERY = """
 MATCH (p:Patient {id: $patientId})-[:MONITORED_BY]->(primary:Doctor)
 OPTIONAL MATCH path = (available:Doctor {on_duty: true})-[:BACKUP_FOR*0..3]->(primary)
@@ -40,7 +39,6 @@ def resolve_notified_doctor(driver, patient_id: str) -> dict | None:
         }
 
 
-# analytical query, not used in the live alert path
 DEVICE_CORRELATION_QUERY = """
 MATCH (p1:Patient)-[:OWNS]->(d1:Device)
 MATCH (p2:Patient)-[:OWNS]->(d2:Device)

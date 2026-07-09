@@ -64,7 +64,6 @@ def _require_known_patient(patient_id: str):
 @app.get("/patients")
 def list_patients():
     rows = mysql_client.fetch_all_patients(state["mysql"])
-    # Convert date objects to ISO strings for JSON serialization.
     for r in rows:
         if r.get("date_of_birth") is not None:
             r["date_of_birth"] = r["date_of_birth"].isoformat()
