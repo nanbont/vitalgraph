@@ -1,49 +1,38 @@
-# VitalGraph — Polyglot Health Monitoring & Care-Network Platform
+# VitalGraph — Technical Specification
 
-**Course:** Database Module B  **Track:** DB-B8 — Health & Wellness
+**Course:** Database Management Systems, Module B
+**Track:** DB-B8 — Health & Wellness
 **Stack:** Python, MySQL, MongoDB, Neo4j, MQTT (Mosquitto), FastAPI, Streamlit
 
 ---
 
 ## 1. Concept
 
-Simulated wearable devices stream vitals over MQTT. A Python router picks
-up each message and writes it to whichever database actually fits that
-kind of data — MySQL for the regular numeric readings, MongoDB for the
-stuff that doesn't have a fixed shape, Neo4j for the care-network
-relationships.
+Simulated wearable devices publish vital signs over MQTT. A Python subscriber routes each message to the database best suited for that type of data: MySQL for structured numeric time-series, MongoDB for variable-structure alerts and device metadata, and Neo4j for the care network of patients and doctors.
 
-The part I actually care about getting right: Neo4j isn't just storing
-data, it's used to decide things. When a reading crosses a threshold, the
-router queries the graph to figure out who should get notified — walking
-a backup-coverage chain if the patient's usual doctor is off duty. The
-graph holds relationships; it doesn't log events.
+Neo4j is queried live when an alert fires to resolve which doctor to notify, walking a backup chain of up to two hops if the primary doctor is unavailable. The graph holds relationships and is never written to as part of normal operation.
 
 ---
 
 ## 2. Architecture
 
 ```
-[Simulated Wearables] --(MQTT)--> [Mosquitto Broker]
-                                        |
-                                        v
-                          [Python Router]
-                           /                              \
-                          v                                v
-                   MySQL                              MongoDB
-              (vitals time-series)          (symptom logs, device metadata,
-                                                    alert records)
-                          \                                /
-                           \                              /
-                            v                            v
-                         [Anomaly check] --query--> Neo4j
-                                                  (who to notify)
-                                        |
-                                        v
-                          [FastAPI backend] <-- queries all 3 DBs
-                                        |
-                                        v
-                       [Streamlit dashboard: charts + alert feed]
+[Publisher: Simulated Wearables] --(MQTT)--> [Mosquitto Broker]
+                                                      |
+                                                      v
+                                          [Python Subscriber]
+                                        /         |          \
+                                       v          v           v
+                                   MySQL      MongoDB       Neo4j
+                             (vitals,       (alerts,      (care network,
+                              anomaly log,   device        escalation
+                              view, procs)   metadata)     queries)
+                                       \         |          /
+                                        v        v         v
+                                       [FastAPI Backend]
+                                                |
+                                                v
+                                    [Streamlit Dashboard]
 ```
 
 ---
@@ -52,28 +41,15 @@ graph holds relationships; it doesn't log events.
 
 | Data | Database | Reasoning |
 |---|---|---|
-| Heart rate, SpO2, steps, sleep | **MySQL** | Fixed schema, high write frequency, needs fast range/aggregate queries. Standard OLTP case. |
-| Symptom logs, device metadata | **MongoDB** | Different device models genuinely have different fields (sensors, firmware, capabilities). Patient self-reports are free-form with optional fields. Either of these as fixed SQL columns means constant migrations. |
-| Care escalation chains, device-correlation | **Neo4j** | "Who's next in the escalation chain" and "which patients share a device model" are variable-depth path questions — painful as recursive SQL, natural in Cypher. Queried at decision time, not stored as a log. |
+| Heart rate, SpO2, steps, sleep | MySQL | Fixed schema, high write frequency, needs fast range queries. Standard relational case for sensor time-series. |
+| Alert records, device metadata | MongoDB | Alert detail field differs by alert type. Device metadata differs by model. Neither fits a fixed relational schema without sparse nullable columns. |
+| Care escalation chains, device correlation | Neo4j | Variable-depth path traversal questions. Natural in Cypher, queried live at decision time. |
 
-No `Alert` nodes in Neo4j — an alert is an event with a timestamp, that's
-MongoDB's job. The graph only gets touched when the care network itself
-changes (a doctor's shift status, a new backup assignment).
+No Alert nodes in Neo4j. An alert is an event with a timestamp and a payload, and that belongs in MongoDB. The graph changes only when the care network itself changes: a doctor's duty status, a new backup assignment.
 
-### Why MySQL and not Postgres or SQLite
+### Why MySQL instead of PostgreSQL
 
-Started with Postgres, mainly for `TIMESTAMPTZ` and time-based window
-functions (`RANGE BETWEEN INTERVAL`) — would've made rolling averages a
-one-liner. Switched to MySQL partway through: SQLite felt too thin for
-this (no real concurrent writes, no actual client-server story), and
-MySQL was the better fit for a system meant to look production-minded.
-
-Cost of the switch: MySQL 8 supports `ROWS BETWEEN` but not time-based
-`RANGE BETWEEN INTERVAL`. A row-count window isn't the same thing as a
-time window if readings arrive at irregular intervals, so the rolling
-average got moved out of SQL and into Python (see Section 5). Timestamps
-are stored as UTC `DATETIME`; timezone conversion is the application's
-problem, not the database's.
+Started with PostgreSQL for native TIMESTAMPTZ and time-based window functions (RANGE BETWEEN INTERVAL). Switched to MySQL to align with the course ecosystem. Cost: MySQL 8 supports ROWS BETWEEN (row-count windows) but not time-based RANGE BETWEEN INTERVAL. The rolling average was moved into Python as a result.
 
 ---
 
@@ -88,16 +64,15 @@ vitalgraph/{patient_id}/symptoms/report
 vitalgraph/{patient_id}/device/status
 ```
 
-Router subscribes to `vitalgraph/+/+/#`. Routing is based on the topic
-segments, not on inspecting the payload.
+Subscriber uses a single wildcard subscription: `vitalgraph/+/+/#`. Routing is based on topic segments, not payload inspection.
 
-No `events/anomaly` topic — devices report raw readings, the router
-decides what counts as abnormal after the fact. That's closer to how a
-real device would actually behave.
+There is no `events/anomaly` topic. Devices publish raw readings. The subscriber decides what counts as abnormal after the write.
 
 ---
 
 ## 5. MySQL schema
+
+Core tables:
 
 ```sql
 CREATE TABLE patients (
@@ -124,40 +99,102 @@ CREATE TABLE vitals_heartrate (
     FOREIGN KEY (patient_id) REFERENCES patients(patient_id),
     FOREIGN KEY (device_id) REFERENCES devices(device_id)
 );
+
 CREATE INDEX idx_hr_patient_time ON vitals_heartrate (patient_id, recorded_at DESC);
-
-CREATE TABLE vitals_spo2 (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    patient_id CHAR(36),
-    device_id CHAR(36),
-    spo2_pct DECIMAL(4,1) NOT NULL,
-    recorded_at DATETIME NOT NULL,
-    FOREIGN KEY (patient_id) REFERENCES patients(patient_id),
-    FOREIGN KEY (device_id) REFERENCES devices(device_id)
-);
-CREATE INDEX idx_spo2_patient_time ON vitals_spo2 (patient_id, recorded_at DESC);
-
-CREATE TABLE vitals_activity (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    patient_id CHAR(36),
-    device_id CHAR(36),
-    steps INT,
-    sleep_minutes INT,
-    recorded_at DATETIME NOT NULL,
-    FOREIGN KEY (patient_id) REFERENCES patients(patient_id),
-    FOREIGN KEY (device_id) REFERENCES devices(device_id)
-);
 ```
 
-**Rolling average, computed in Python:**
+vitals_spo2 and vitals_activity follow the same pattern.
+
+### Trigger
+
+Fires after every INSERT into vitals_heartrate and vitals_spo2. Logs anomalous readings to anomaly_log automatically, independent of Python code:
+
+```sql
+CREATE TRIGGER trg_heartrate_anomaly
+AFTER INSERT ON vitals_heartrate
+FOR EACH ROW
+BEGIN
+    IF NEW.bpm > 140 THEN
+        INSERT INTO anomaly_log (patient_id, device_id, reading_type, value, direction, threshold)
+        VALUES (NEW.patient_id, NEW.device_id, 'heartrate', NEW.bpm, 'high', 140);
+    ELSEIF NEW.bpm < 40 THEN
+        INSERT INTO anomaly_log (patient_id, device_id, reading_type, value, direction, threshold)
+        VALUES (NEW.patient_id, NEW.device_id, 'heartrate', NEW.bpm, 'low', 40);
+    END IF;
+END
+```
+
+### View
+
+Joins patients with their latest vitals and total anomaly count:
+
+```sql
+CREATE VIEW patient_vitals_summary AS
+SELECT p.patient_id, p.name, p.date_of_birth,
+    hr.bpm AS latest_bpm,
+    s.spo2_pct AS latest_spo2,
+    COUNT(a.id) AS total_anomalies
+FROM patients p
+LEFT JOIN vitals_heartrate hr ON hr.patient_id = p.patient_id
+    AND hr.recorded_at = (SELECT MAX(recorded_at) FROM vitals_heartrate WHERE patient_id = p.patient_id)
+LEFT JOIN vitals_spo2 s ON s.patient_id = p.patient_id
+    AND s.recorded_at = (SELECT MAX(recorded_at) FROM vitals_spo2 WHERE patient_id = p.patient_id)
+LEFT JOIN anomaly_log a ON a.patient_id = p.patient_id
+GROUP BY p.patient_id, p.name, p.date_of_birth, hr.bpm, hr.recorded_at, s.spo2_pct, s.recorded_at;
+```
+
+### Stored procedure
+
+Returns latest vitals and recent anomaly history for one patient:
+
+```sql
+CREATE PROCEDURE get_patient_summary(IN p_id CHAR(36))
+BEGIN
+    SELECT p.name, p.date_of_birth, hr.bpm AS latest_bpm, s.spo2_pct AS latest_spo2
+    FROM patients p
+    LEFT JOIN vitals_heartrate hr ON hr.patient_id = p.patient_id
+        AND hr.recorded_at = (SELECT MAX(recorded_at) FROM vitals_heartrate WHERE patient_id = p_id)
+    LEFT JOIN vitals_spo2 s ON s.patient_id = p.patient_id
+        AND s.recorded_at = (SELECT MAX(recorded_at) FROM vitals_spo2 WHERE patient_id = p_id)
+    WHERE p.patient_id = p_id;
+
+    SELECT reading_type, value, direction, threshold, logged_at
+    FROM anomaly_log
+    WHERE patient_id = p_id
+    ORDER BY logged_at DESC LIMIT 5;
+END
+```
+
+### Archive procedure and event
+
+Moves readings older than 30 minutes to vitals_heartrate_archive. Runs automatically every 30 minutes via MySQL Event Scheduler:
+
+```sql
+CREATE PROCEDURE archive_old_readings()
+BEGIN
+    INSERT INTO vitals_heartrate_archive
+        SELECT * FROM vitals_heartrate
+        WHERE recorded_at < DATE_SUB(UTC_TIMESTAMP(), INTERVAL 30 MINUTE);
+    DELETE FROM vitals_heartrate
+        WHERE recorded_at < DATE_SUB(UTC_TIMESTAMP(), INTERVAL 30 MINUTE);
+    SELECT ROW_COUNT() AS rows_archived;
+END
+
+CREATE EVENT auto_archive
+ON SCHEDULE EVERY 30 MINUTE
+DO CALL archive_old_readings();
+```
+
+### Rolling average (Python)
+
+MySQL 8 does not support time-based RANGE BETWEEN INTERVAL, so the rolling average is computed in Python:
 
 ```python
-# api/services/vitals.py
 from datetime import timedelta
 from statistics import mean
 
 def rolling_avg_bpm(readings: list[dict], window_minutes: int = 10) -> list[dict]:
-    """readings: [{"recorded_at": datetime, "bpm": int}, ...], sorted ascending."""
+    # average over the preceding time window, not row count
     window = timedelta(minutes=window_minutes)
     result = []
     for i, r in enumerate(readings):
@@ -172,11 +209,11 @@ def rolling_avg_bpm(readings: list[dict], window_minutes: int = 10) -> list[dict
 ## 6. MongoDB collections
 
 ```javascript
-// device_metadata — shape varies per manufacturer/model
+// device_metadata — shape differs per device model
 {
   "_id": "WXP-6305",
-  "model": "WearableX Pro",
-  "firmware_version": "2.3.1",
+  "model": "Apple Watch Series 9",
+  "firmware_version": "10.3.1",
   "battery_pct": 78,
   "last_seen": ISODate(),
   "capabilities": ["heartrate", "spo2", "steps", "sleep"]
@@ -185,9 +222,9 @@ def rolling_avg_bpm(readings: list[dict], window_minutes: int = 10) -> list[dict
 // symptom_logs — free text, optional fields
 {
   "_id": ObjectId(),
-  "patient_id": "...",
+  "patient_id": "BKLTST85C54F158P",
   "reported_at": ISODate(),
-  "text": "Felt dizzy after climbing stairs, lasted ~10 min",
+  "text": "Felt dizzy after climbing stairs, lasted about 10 minutes",
   "tags": ["dizziness"],
   "severity_self_rated": 3
 }
@@ -195,15 +232,43 @@ def rolling_avg_bpm(readings: list[dict], window_minutes: int = 10) -> list[dict
 // alerts — event records, not graph nodes
 {
   "_id": ObjectId(),
-  "patient_id": "...",
-  "device_id": "...",
+  "patient_id": "BKLTST85C54F158P",
+  "device_id": "WXP-6305",
   "alert_type": "abnormal_heartrate",
   "severity": "high",
   "detail": { "bpm": 162, "threshold": 140, "direction": "high" },
   "detected_at": ISODate(),
-  "notified_doctor_id": "...",
+  "notified_doctor_id": "MED-CARD-521",
   "acknowledged": false
 }
+```
+
+### Aggregation pipeline
+
+Groups alerts by patient with heartrate/SpO2 breakdown:
+
+```javascript
+db.alerts.aggregate([
+  { "$group": {
+    "_id": "$patient_id",
+    "total_alerts": { "$sum": 1 },
+    "heartrate_alerts": { "$sum": { "$cond": [{ "$eq": ["$alert_type", "abnormal_heartrate"] }, 1, 0] } },
+    "spo2_alerts": { "$sum": { "$cond": [{ "$eq": ["$alert_type", "low_spo2"] }, 1, 0] } },
+    "last_alert": { "$max": "$detected_at" }
+  }},
+  { "$sort": { "total_alerts": -1 } }
+])
+```
+
+### TTL index
+
+Expires alert documents older than 30 days automatically:
+
+```javascript
+db.alerts.createIndex(
+  { detected_at: 1 },
+  { expireAfterSeconds: 2592000, name: "ttl_alerts_30days" }
+)
 ```
 
 ---
@@ -211,26 +276,22 @@ def rolling_avg_bpm(readings: list[dict], window_minutes: int = 10) -> list[dict
 ## 7. Neo4j graph model
 
 ```cypher
-// Nodes
 (:Patient {id, name})
 (:Doctor {id, name, specialty, on_duty})
 (:CareTeam {id, name})
 
-// Relationships
 (:Patient)-[:MONITORED_BY]->(:Doctor)
 (:Doctor)-[:MEMBER_OF]->(:CareTeam)
-(:Doctor)-[:BACKUP_FOR]->(:Doctor)        // covering doctor if primary off-duty
+(:Doctor)-[:BACKUP_FOR]->(:Doctor)
 (:Patient)-[:OWNS]->(:Device {id, type})
 ```
 
 ### Query 1 — escalation routing
 
-This is the one that matters. Run by the router the instant an anomaly
-fires; the result becomes `notified_doctor_id` in the MongoDB alert.
+Run by the subscriber the instant an anomaly fires. Result becomes notified_doctor_id in the MongoDB alert.
 
 ```cypher
-// (X)-[:BACKUP_FOR]->(Y) means "X is the backup for Y" — so walk the
-// chain BACKWARDS from the primary to find who's covering for them.
+// (X)-[:BACKUP_FOR]->(Y) means X backs up Y; walk backwards from primary
 MATCH (p:Patient {id: $patientId})-[:MONITORED_BY]->(primary:Doctor)
 OPTIONAL MATCH path = (available:Doctor {on_duty: true})-[:BACKUP_FOR*0..3]->(primary)
 RETURN coalesce(available, primary) AS notify, length(path) AS chain_depth
@@ -238,74 +299,98 @@ ORDER BY chain_depth
 LIMIT 1;
 ```
 
-First draft of this query had the `BACKUP_FOR` direction backwards —
-caught it by tracing a small example by hand against the seed data before
-testing live (full story in the report).
+Current care network exercises all three depth levels:
+- Tigist Bekele: chain depth 2 (primary and backup both off duty)
+- Dawit Haile: chain depth 1 (primary off duty)
+- Hiwot, Abdi, Abinat: chain depth 0 (primary on duty)
 
-### Query 2 — doctor's current patient load
+The first draft had BACKUP_FOR direction backwards. Caught by hand-tracing the seed data before testing live.
+
+### Query 2 — doctor patient load
 
 ```cypher
 MATCH (doc:Doctor {id: $doctorId})<-[:MONITORED_BY]-(p:Patient)
 RETURN p.name, p.id;
 ```
 
-### Query 3 — device-correlation
+### Query 3 — device correlation
 
 ```cypher
-// patients sharing a device model — signal for a faulty device batch
 MATCH (p1:Patient)-[:OWNS]->(d1:Device)
 MATCH (p2:Patient)-[:OWNS]->(d2:Device)
 WHERE d1.type = d2.type AND p1.id < p2.id
 RETURN p1.name, p2.name, d1.type;
 ```
 
-Result gets joined against `alerts.detected_at` from MongoDB in the API
-layer to check if the pair's alerts actually cluster in time.
+Result is joined in the API layer against alerts.detected_at from MongoDB to check if paired patients had alerts within the same 10-minute window.
+
+### Query 4 — on-call doctors
+
+```cypher
+MATCH (d:Doctor {on_duty: true})
+OPTIONAL MATCH (p:Patient)-[:MONITORED_BY]->(d)
+RETURN d.name AS doctor, d.specialty AS specialty, count(p) AS patient_count
+ORDER BY patient_count DESC
+```
 
 ---
 
 ## 8. Anomaly detection
 
-Runs in the router right after a vitals write:
+Runs in the subscriber after every vitals write:
 
-- Heart rate > 140 or < 40 bpm → `abnormal_heartrate`
-- SpO2 < 92% → `low_spo2`
+- Heart rate > 160 bpm: severity high
+- Heart rate > 140 bpm: severity warning
+- Heart rate < 40 bpm: severity high
+- SpO2 < 85%: severity high
+- SpO2 < 92%: severity warning
 
-On trigger: run the Section 7 escalation query → write the alert to
-MongoDB with the resolved doctor already attached → dashboard picks it up.
-
----
-
-## 9. Tech stack
-
-- **Python**: `paho-mqtt`, `mysql-connector-python`, `pymongo`, `neo4j` driver
-- **FastAPI**: REST endpoints, independent of the dashboard
-- **Streamlit**: dashboard, connects directly to all three databases
-- **MySQL, MongoDB, Neo4j, Mosquitto**: Dockerized
-
-(Originally planned a React frontend — abandoned after a few hours
-fighting Node version/port issues on this machine, switched to Streamlit.
-Not a big loss; one less moving part.)
+On trigger: run escalation query, write alert to MongoDB with notified_doctor_id already resolved, dashboard picks it up.
 
 ---
 
-## 10. Repo structure
+## 9. Patients and doctors
+
+**Patients (5):**
+- Tigist Bekele (BKLTST85C54F158P) — Apple Watch Series 9
+- Dawit Haile (HLADWT72S02F158E) — Polar H10
+- Hiwot Girma (GRMHWT90L62F158Y) — Fitbit Charge 6
+- Abdi Bekele (BKLBDA88E19F158V) — Apple Watch Series 9
+- Abinat Birhanu (BRHBNT95P48F158M) — Fitbit Charge 6
+
+**Doctors (6):**
+- Dr. Selam Tadesse (MED-CARD-343) — Cardiology, off duty
+- Dr. Yonas Desta (MED-CARD-706) — Cardiology, off duty
+- Dr. Meron Alemu (MED-CARD-657) — General Medicine, on duty
+- Dr. Melaku Tafesse (MED-IMED-233) — Internal Medicine, on duty
+- Dr. Siduna Girma (MED-IMED-478) — Internal Medicine, on duty
+- Dr. Fikirte Hailu (MED-CARD-521) — Cardiology, on duty (backs up Dr. Yonas)
+
+---
+
+## 10. Tech stack
+
+- Python: paho-mqtt, mysql-connector-python, pymongo, neo4j driver, fastapi, streamlit
+- All services run in Docker via docker-compose
+
+---
+
+## 11. Repo structure
 
 ```
 vitalgraph/
-├── publisher/publisher.py
+├── publisher/publisher.py      simulates five wearable devices
 ├── router/
-│   ├── subscriber.py
-│   ├── anomaly.py
-│   └── dbclients/
-├── api/main.py
-├── dashboard_app.py
-├── shared_constants.py
+│   ├── subscriber.py           MQTT subscriber, dispatcher, anomaly detection
+│   ├── anomaly.py              threshold checks (warning vs high severity)
+│   └── dbclients/              MySQL, MongoDB, Neo4j client modules
+├── api/main.py                 FastAPI backend
+├── dashboard_app.py            Streamlit dashboard
+├── shared_constants.py         patient/device IDs, MQTT topics, thresholds
 ├── db/
-│   ├── mysql/init.sql
-│   ├── mongo/seed.js
-│   └── neo4j/seed.cypher, load_seed.sh
-├── mosquitto/config/
+│   ├── mysql/init.sql          schema, triggers, view, procedures, archive, event
+│   ├── mongo/seed.js           device metadata, TTL index
+│   └── neo4j/seed.cypher       care network with 6 doctors and backup chains
 ├── docker-compose.yml
 ├── requirements.txt
 ├── .env.example
