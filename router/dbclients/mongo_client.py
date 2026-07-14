@@ -1,4 +1,3 @@
-"""MongoDB writer for alerts and device metadata."""
 
 import os
 from datetime import datetime, timezone
@@ -30,7 +29,6 @@ def insert_alert(
     detail: dict,
     notified_doctor_id: str | None,
 ) -> str:
-    """notified_doctor_id is already resolved before this is called."""
     doc = {
         "patient_id": patient_id,
         "device_id": device_id,
@@ -63,7 +61,6 @@ def recent_alerts(db, patient_id: str | None = None, limit: int = 50):
 
 
 def all_device_metadata(db):
-    """All device_metadata documents, fields differ per model."""
     return list(db.device_metadata.find())
 
 

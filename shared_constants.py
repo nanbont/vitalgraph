@@ -1,19 +1,3 @@
-"""
-VitalGraph: shared constants.
-
-These IDs MUST match exactly what's seeded in:
-  - db/mysql/init.sql      (patients, devices tables)
-  - db/mongo/seed.js       (device_metadata collection)
-  - db/neo4j/seed.cypher   (Patient, Device nodes)
-
-If you add a new patient/device here, you must add it to all three seeds too.
-
-Patient IDs follow the Italian Codice Fiscale shape (16 chars: surname/given
-name consonant codes + birth year/month/day+sex + birthplace code F158 =
-Messina + checksum letter). Device IDs follow a manufacturer-model-serial
-convention. Doctor IDs follow a hospital staff-code convention
-(MED-<department>-<number>).
-"""
 
 PATIENTS = {
     "BKLTST85C54F158P": {
@@ -48,7 +32,6 @@ PATIENTS = {
     },
 }
 
-# MQTT topic structure — see SPEC.md section 4
 MQTT_TOPIC_PREFIX = "vitalgraph"
 
 
@@ -72,7 +55,6 @@ def topic_device_status(patient_id: str) -> str:
     return f"{MQTT_TOPIC_PREFIX}/{patient_id}/device/status"
 
 
-# Anomaly thresholds — see SPEC.md section 8
 HR_HIGH_THRESHOLD = 140
 HR_LOW_THRESHOLD = 40
 SPO2_LOW_THRESHOLD = 92.0

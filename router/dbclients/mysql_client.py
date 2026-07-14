@@ -1,4 +1,3 @@
-"""MySQL writer for vitals readings."""
 
 import logging    
 import os         

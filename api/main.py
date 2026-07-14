@@ -1,4 +1,3 @@
-"""VitalGraph FastAPI backend. Run: uvicorn api.main:app --reload --port 8000"""
 
 import asyncio
 import json
@@ -122,7 +121,6 @@ def get_device_correlation():
 
 @app.websocket("/ws/alerts")
 async def ws_alerts(websocket: WebSocket):
-    """Polls MongoDB for new alerts and pushes them to the client."""
     await websocket.accept()
     state["ws_clients"].add(websocket)
     last_seen_id = None

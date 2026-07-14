@@ -1,4 +1,3 @@
-"""MQTT subscriber, dispatches messages to MySQL/MongoDB/Neo4j, checks anomalies."""
 
 import json
 import logging
@@ -37,7 +36,6 @@ def handle_anomaly(
     device_id: str,
     anomaly: dict,
 ):
-    """Resolve who to notify via Neo4j, write the alert to MongoDB."""
     resolution = neo4j_client.resolve_notified_doctor(neo4j_driver, patient_id)
     notified_doctor_id = resolution["doctor_id"] if resolution else None
 

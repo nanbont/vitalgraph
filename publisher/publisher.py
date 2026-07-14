@@ -1,4 +1,3 @@
-"""Simulates wearables publishing vitals over MQTT. Run: python publisher/publisher.py"""
 
 import json
 import logging
@@ -79,7 +78,6 @@ def make_device_status(device_type: str, battery_pct: int) -> dict:
 
 
 class PatientSimulator:
-    """Tracks publish counters + battery drain for one patient's device."""
 
     def __init__(self, patient_id: str, profile: dict):
         self.patient_id = patient_id

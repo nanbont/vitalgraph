@@ -1,4 +1,3 @@
-"""Heart rate / SpO2 threshold checks."""
 from shared_constants import HR_HIGH_THRESHOLD, HR_LOW_THRESHOLD, SPO2_LOW_THRESHOLD
 
 def check_heartrate(bpm: int) -> dict | None:

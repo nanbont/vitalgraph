@@ -1,4 +1,3 @@
-"""Neo4j escalation queries — graph stores relationships, not alert events."""
 
 import os
 
@@ -12,8 +11,6 @@ def get_driver():
     return GraphDatabase.driver(uri, auth=(user, password))
 
 
-# See SPEC.md section 7, Query 1. Semantics reminder: (X)-[:BACKUP_FOR]->(Y)
-# means "X is the backup for Y", so we walk BACKWARDS from the primary
 ESCALATION_QUERY = """
 MATCH (p:Patient {id: $patientId})-[:MONITORED_BY]->(primary:Doctor)
 OPTIONAL MATCH path = (available:Doctor {on_duty: true})-[:BACKUP_FOR*0..3]->(primary)
@@ -25,7 +22,6 @@ RETURN coalesce(available, primary) AS notify, primary.name AS primary_name
 
 
 def resolve_notified_doctor(driver, patient_id: str) -> dict | None:
-    """None if patient has no monitoring doctor."""
     with driver.session() as session:
         result = session.run(ESCALATION_QUERY, patientId=patient_id)
         record = result.single()

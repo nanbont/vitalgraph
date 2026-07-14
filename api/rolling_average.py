@@ -1,4 +1,3 @@
-"""Rolling average in Python — MySQL only supports row-count windows, not time-based ones."""
 
 from datetime import datetime, timedelta
 from statistics import mean
@@ -9,17 +8,9 @@ def with_rolling_average(
     value_key: str,
     window_minutes: int = 10,
 ) -> list[dict]:
-    """
-    readings: list of dicts with 'recorded_at' (datetime) and value_key,
-              expected sorted DESCENDING (newest first) as MySQL returns them.
-    Returns the same list (still newest first), each dict annotated with
-    'rolling_avg'.
-    """
     if not readings:
         return []
 
-    # Work ascending internally so the "preceding window" logic reads naturally,
-    # then reverse back before returning.
     ascending = list(reversed(readings))
     window = timedelta(minutes=window_minutes)
     result = []
